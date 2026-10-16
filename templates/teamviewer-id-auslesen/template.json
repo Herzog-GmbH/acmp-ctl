@@ -1,0 +1,117 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "teamviewer-id-auslesen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "TeamViewer-ID auslesen",
+  "summary": "Liest die TeamViewer-ClientID aus der Registry (64- und 32-Bit-Pfad) und speichert sie im individuellen Feld „TeamViewerID“ am Client. So steht die ID direkt in ACMP, etwa für eine Fernwartung aus ACMP heraus.",
+  "description": "## So funktioniert es\n1. Ein PowerShell-Schritt liest den Wert `ClientID` unter `HKLM\\SOFTWARE\\WOW6432Node\\TeamViewer` und, falls dort nichts steht, unter `HKLM\\SOFTWARE\\TeamViewer`.\n2. Der zweite Schritt speichert die ID im individuellen Feld „TeamViewerID“ am Client.\n\n## Ergebnis/Exitcodes\n- Im Feld steht die TeamViewer-ID, z. B. `123456789`.\n- Ist TeamViewer nicht installiert, bleibt die Ausgabe leer. Der Command meldet dann keinen Fehler.\n\n## Hinweise\n- Läuft als Dienst (SYSTEM) und ändert nichts am Client.\n- Für einen aktuellen Stand regelmäßig ausführen, z. B. als geplanten Job.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Inventar",
+  "tags": [
+    "TeamViewer",
+    "Fernwartung",
+    "Registry",
+    "ClientID",
+    "individuelles Feld"
+  ],
+  "applications": [
+    {
+      "name": "TeamViewer",
+      "vendor": "TeamViewer"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.9",
+    "scriptFormat": 13,
+    "exportedWith": "6.9"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [
+      {
+        "name": "TeamViewerID",
+        "type": "Text",
+        "maxLength": 25,
+        "table": "Attribute",
+        "folder": "Client Info"
+      }
+    ],
+    "globalAccount": null,
+    "notes": [
+      "Das individuelle Feld „TeamViewerID“ (Text, 25 Zeichen) muss vor der Installation unter Client Info → Attribute existieren. Feld- und Tabellen-IDs setzt die Installation ein."
+    ]
+  },
+  "variables": [
+    {
+      "name": "TEAMVIEWER_ID",
+      "value": ""
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "TeamViewer-ClientID aus der Registry lesen",
+      "fields": {
+        "BatchLines": [
+          "$tvId = (Get-ItemProperty \"HKLM:\\SOFTWARE\\WOW6432Node\\TeamViewer\" -Name \"ClientID\" -ErrorAction SilentlyContinue).ClientID",
+          "if (-not $tvId) {",
+          "    $tvId = (Get-ItemProperty \"HKLM:\\SOFTWARE\\TeamViewer\" -Name \"ClientID\" -ErrorAction SilentlyContinue).ClientID",
+          "}",
+          "Write-Output $tvId"
+        ],
+        "ExitCode": "",
+        "OutputLines": "TEAMVIEWER_ID",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TStoreValueOnACMPServer",
+      "description": "TeamViewer-ID im Feld „TeamViewerID“ speichern",
+      "fields": {
+        "_DataVersion": "2",
+        "Tablename": "{{CF:TeamViewerID:Tablename}}",
+        "Fieldname": "{{CF:TeamViewerID:Fieldname}}",
+        "FieldDisplayName": "TeamViewerID",
+        "FieldType": "1",
+        "FieldID": "{{CF:TeamViewerID:FieldID}}",
+        "Value": "%TEAMVIEWER_ID%",
+        "TableType": "0",
+        "TableDisplayName": "Attribute",
+        "TableID": "{{CF:TeamViewerID:TableID}}",
+        "Tablenames": "",
+        "Fieldnames": "",
+        "FieldDisplayNames": "",
+        "FieldTypes": "",
+        "FieldIDs": "",
+        "Values": "",
+        "TableTypes": "",
+        "TableDisplayNames": "",
+        "TableIds": "",
+        "FolderTypes": "",
+        "FolderNames": "",
+        "FolderGuids": "",
+        "ClientID": "",
+        "ClearPreviousValues": "False",
+        "StoreMultiValue": "False",
+        "StoredCustomFields": "{\"StoredCustomFields\":[{\"Id\":\"{{CF:TeamViewerID:FieldID}}\",\"ParentId\":\"{{CF:TeamViewerID:TableID}}\",\"DisplayName_en\":\"TeamViewerID\",\"DisplayName_de\":\"TeamViewerID\",\"IsMultiField\":false,\"InputMethod\":\"imText\",\"MaxLength\":25,\"FieldHeight\":0,\"RangeMin\":0,\"RangeMax\":0,\"DecimalPlaces\":0,\"HasRange\":false}]}",
+        "StoredTables": "{\"StoredTables\":[{\"Id\":\"{{CF:TeamViewerID:TableID}}\",\"ParentId\":\"{{CF:TeamViewerID:FolderID}}\",\"DisplayName\":\"Attribute\",\"IsMultiTable\":false}]}",
+        "StoredFolders": "{\"StoredFolders\":[{\"Id\":\"{{CF:TeamViewerID:FolderID}}\",\"ParentId\":\"{{CF:TeamViewerID:FolderParentID}}\",\"DisplayName\":\"Client Info\"}]}"
+      }
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,10 @@
+# interne Muster für die Leak-Prüfung, nie einchecken
+tools/scan-rules.local.json
+# Rohdaten aus acmp_cc_decode
+*.decode.json
+node_modules/
+# lokale Exporte, deren Herkunft oder Eignung noch offen ist (werden nicht gebaut)
+lokal/
+
+# wird im Build erzeugt (GitHub Actions baut es vor dem Veröffentlichen)
+site/index.json

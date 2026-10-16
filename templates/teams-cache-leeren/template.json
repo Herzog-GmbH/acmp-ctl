@@ -1,0 +1,180 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "teams-cache-leeren",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Teams-Cache leeren (neues und klassisches Teams)",
+  "summary": "Beendet Microsoft Teams für den angemeldeten Benutzer, leert den Cache des neuen und des klassischen Teams und startet Teams auf Wunsch wieder. Hilft bei Anmeldeschleifen, alten Profilbildern, fehlenden Kanälen oder hängenden Chats.",
+  "description": "### So funktioniert es\n1. Der Schritt läuft als angemeldeter Benutzer. Er beendet `ms-teams.exe` (neues Teams) und `Teams.exe` (klassisches Teams), aber nur in der Sitzung dieses Benutzers.\n2. Er leert den Ordner `LocalCache\\Microsoft\\MSTeams` im Paketordner `MSTeams_8wekyb3d8bbwe` unter LOCALAPPDATA (neues Teams) und den Ordner `Microsoft\\Teams` unter APPDATA (klassisches Teams). Die Ordner selbst bleiben stehen.\n3. Lief Teams vorher und steht `TEAMS_NEU_STARTEN` auf Ja, startet der Schritt Teams wieder.\n\n### Ergebnis und Exitcodes\n- Exitcode in `TEAMS_EXITCODE`: `0` geleert oder nichts zu tun. `1` einige Dateien waren gesperrt. `3` der Schritt lief als SYSTEM statt als Benutzer.\n- Bei einem Exitcode ungleich 0 beendet sich der Command mit Fehler.\n\n### Hinweise\n- Beim klassischen Teams leert der Command den ganzen Ordner, wie Microsoft es beschreibt. Dessen lokale Einstellungen sind danach zurückgesetzt.\n- Teams lädt Chats und Einstellungen danach neu. Der erste Start dauert etwas länger, eventuell muss sich der Benutzer neu anmelden.\n- Die Pfade kommen aus `$env:LOCALAPPDATA` und `$env:APPDATA`, weil ACMP Prozentzeichen durch eigene Variablen ersetzt.\n- Gut geeignet für den Kiosk: Der Benutzer startet die Reparatur selbst, wenn Teams klemmt.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Wartung",
+  "tags": [
+    "Teams",
+    "Cache",
+    "Microsoft 365",
+    "Fehlerbehebung",
+    "Benutzerkontext",
+    "Kiosk"
+  ],
+  "applications": [
+    {
+      "name": "Microsoft Teams (neu)",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Microsoft Teams (klassisch)",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "NEU_STARTEN",
+      "description": "Ja = Teams nach dem Leeren wieder starten, wenn es vorher lief. Nein = Teams bleibt geschlossen.",
+      "default": "Ja"
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Der PowerShell-Schritt läuft als angemeldeter Benutzer (Ausführen als: Benutzer, ohne erhöhte Rechte). Administratorrechte sind nicht nötig.",
+      "Ein Benutzer muss angemeldet sein.",
+      "Teams wird ohne Rückfrage geschlossen. Laufende Besprechungen brechen ab. Vorher ankündigen oder den Command im Kiosk anbieten."
+    ]
+  },
+  "variables": [
+    {
+      "name": "TEAMS_NEU_STARTEN",
+      "value": "{{NEU_STARTEN}}"
+    },
+    {
+      "name": "TEAMS_EXITCODE",
+      "value": "0"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Teams beenden und Cache leeren (als Benutzer)",
+      "summary": "ms-teams.exe und Teams.exe beenden, MSTeams-LocalCache und APPDATA\\Microsoft\\Teams leeren, Teams neu starten",
+      "fields": {
+        "isSystem": "False",
+        "_CommandComment": "Läuft als angemeldeter Benutzer. Rückgabe in TEAMS_EXITCODE: 0 geleert; 1 Dateien gesperrt; 3 lief als SYSTEM.",
+        "BatchLines": [
+          "# Cache von Microsoft Teams (neues Teams und klassisches Teams) leeren. Laeuft als angemeldeter Benutzer.",
+          "# Rueckgabe in TEAMS_EXITCODE: 0 = geleert oder nichts zu tun, 1 = Dateien blieben gesperrt, 3 = laeuft nicht als Benutzer",
+          "# Pfade ueber $env:..., weil ACMP Prozentzeichen durch Variablen ersetzt.",
+          "",
+          "$ich = [Security.Principal.WindowsIdentity]::GetCurrent()",
+          "if ($ich.IsSystem) {",
+          "    Write-Output 'FEHLER: Schritt laeuft als SYSTEM. In ACMP \"Ausfuehren als: Benutzer\" waehlen.'",
+          "    exit 3",
+          "}",
+          "Write-Output ('Benutzer: ' + $ich.Name)",
+          "$neuStarten = ('%TEAMS_NEU_STARTEN%'.Trim() -match '^(ja|yes|true|1)$')",
+          "$sitzung = (Get-Process -Id $PID).SessionId",
+          "",
+          "function Teams-Prozesse {",
+          "    @(Get-Process -Name 'ms-teams', 'Teams' -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $sitzung })",
+          "}",
+          "",
+          "# 1. Teams in dieser Sitzung beenden",
+          "$liefNeu = $false",
+          "$liefAlt = $false",
+          "foreach ($p in @(Teams-Prozesse)) {",
+          "    if ($p.ProcessName -eq 'ms-teams') { $liefNeu = $true } else { $liefAlt = $true }",
+          "    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue",
+          "}",
+          "if ($liefNeu -or $liefAlt) {",
+          "    Write-Output 'Teams beendet.'",
+          "    for ($i = 0; $i -lt 20; $i++) {",
+          "        if (@(Teams-Prozesse).Count -eq 0) { break }",
+          "        Start-Sleep -Seconds 1",
+          "    }",
+          "    Start-Sleep -Seconds 3   # WebView2-Prozesse geben ihre Dateien kurz danach frei",
+          "}",
+          "",
+          "# 2. Cache-Ordner leeren (die Ordner selbst bleiben stehen)",
+          "$ordner = @(",
+          "    (Join-Path $env:LOCALAPPDATA 'Packages\\MSTeams_8wekyb3d8bbwe\\LocalCache\\Microsoft\\MSTeams'),",
+          "    (Join-Path $env:APPDATA 'Microsoft\\Teams')",
+          ")",
+          "$gesperrt = 0",
+          "foreach ($o in $ordner) {",
+          "    if (-not (Test-Path -LiteralPath $o)) {",
+          "        Write-Output ('Nicht vorhanden: ' + $o)",
+          "        continue",
+          "    }",
+          "    Get-ChildItem -LiteralPath $o -Force -ErrorAction SilentlyContinue | ForEach-Object {",
+          "        Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue",
+          "    }",
+          "    $rest = @(Get-ChildItem -LiteralPath $o -Recurse -Force -File -ErrorAction SilentlyContinue).Count",
+          "    $gesperrt += $rest",
+          "    if ($rest -gt 0) { Write-Output ('Geleert: ' + $o + ' (' + $rest + ' Dateien gesperrt)') }",
+          "    else { Write-Output ('Geleert: ' + $o) }",
+          "}",
+          "",
+          "# 3. Teams wieder starten, wenn es vorher lief",
+          "if ($neuStarten -and $liefNeu) {",
+          "    Start-Process -FilePath (Join-Path $env:windir 'explorer.exe') -ArgumentList 'shell:AppsFolder\\MSTeams_8wekyb3d8bbwe!MSTeams'",
+          "    Write-Output 'Neues Teams wird gestartet.'",
+          "}",
+          "if ($neuStarten -and $liefAlt) {",
+          "    $update = Join-Path $env:LOCALAPPDATA 'Microsoft\\Teams\\Update.exe'",
+          "    if (Test-Path -LiteralPath $update) {",
+          "        Start-Process -FilePath $update -ArgumentList '--processStart \"Teams.exe\"'",
+          "        Write-Output 'Klassisches Teams wird gestartet.'",
+          "    }",
+          "}",
+          "if ($gesperrt -gt 0) { exit 1 }",
+          "exit 0"
+        ],
+        "ExitCode": "TEAMS_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn der Cache nicht vollständig geleert wurde",
+      "summary": "TEAMS_EXITCODE ungleich 0",
+      "fields": {
+        "Value_1": "%TEAMS_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "summary": "Ergebnis: Fehler",
+          "fields": {
+            "Result": "1",
+            "Reason": "Teams-Cache nicht vollständig geleert, Code %TEAMS_EXITCODE% (1 = Dateien gesperrt, 3 = lief nicht als Benutzer)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,169 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "app-per-winget-installieren",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "App per winget installieren",
+  "summary": "Installiert eine App still mit winget, aus dem Microsoft Store (msstore) oder dem winget-Katalog. Paket-ID und Quelle sind Parameter, so passt ein Command für viele Apps. Ist die App schon da, passiert nichts.",
+  "description": "## So funktioniert es\n1. Paket-ID und Quelle stehen in den Projektvariablen `WINGET_PAKET` und `WINGET_QUELLE`.\n2. Der Schritt sucht `winget.exe`: als Benutzer über den App-Aliasnamen, als SYSTEM im Paketordner von App Installer.\n3. `winget list --id … --exact` prüft, ob die App schon installiert ist.\n4. Sonst installiert `winget install --id … --exact --silent` die App und schreibt ein winget-Protokoll.\n\n## Ergebnis/Exitcodes\n- 0 = installiert oder schon vorhanden\n- 2 = Paket-ID oder Quelle ungültig\n- 3 = winget-Installation fehlgeschlagen (winget-Code und Protokollpfad im Schritt-Protokoll)\n- 4 = winget nicht gefunden\n- 1 = sonstiger Fehler\n\nBei jedem Code außer 0 endet der Command mit Fehler.\n\n## Hinweise\n- Die Paket-ID findet man mit `winget search <Name>`. Beispiele: `9NKSQGP7F2NH` (WhatsApp, msstore), `7zip.7zip` (winget).\n- Der Schritt läuft als angemeldeter Benutzer. Das passt zu Store-Apps und Apps, die pro Benutzer installiert werden. Braucht der Installer Administratorrechte (z. B. `7zip.7zip`), zeigt Windows dem Benutzer eine UAC-Abfrage oder die Installation schlägt fehl.\n- Für Installationen für alle Benutzer den Schritt in der Console auf „Ausführen als: Dienst“ umstellen und die Quelle `winget` nehmen. Die Quelle `msstore` funktioniert als SYSTEM meist nicht.\n- Protokoll: als Benutzer im TEMP-Ordner des Benutzers, als SYSTEM unter `C:\\Windows\\Temp`, Name `acmp-winget-<Paket-ID>.log`.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Software",
+  "tags": [
+    "winget",
+    "Microsoft Store",
+    "msstore",
+    "Installation",
+    "App Installer"
+  ],
+  "applications": [
+    {
+      "name": "winget (App Installer)",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Microsoft Store",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "PAKET_ID",
+      "description": "winget-Paket-ID, z. B. 9NKSQGP7F2NH für WhatsApp aus dem Store oder 7zip.7zip aus dem winget-Katalog",
+      "required": true
+    },
+    {
+      "name": "QUELLE",
+      "description": "msstore (Microsoft Store) oder winget (Community-Katalog)",
+      "default": "msstore",
+      "required": true
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als angemeldeter Benutzer (Ausführen als: Benutzer). Ohne angemeldeten Benutzer kann der Schritt nicht laufen.",
+      "Auf dem Client muss App Installer (winget) vorhanden sein. Bei Windows 10 ab 1809 und Windows 11 ist er normalerweise dabei.",
+      "Store-Apps brauchen Zugang zum Microsoft Store. Ist der Store per Richtlinie gesperrt, schlägt die Quelle msstore fehl."
+    ]
+  },
+  "variables": [
+    {
+      "name": "WINGET_PAKET",
+      "value": "{{PAKET_ID}}"
+    },
+    {
+      "name": "WINGET_QUELLE",
+      "value": "{{QUELLE}}"
+    },
+    {
+      "name": "WINGET_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "App per winget installieren (als Benutzer)",
+      "fields": {
+        "isSystem": "False",
+        "BatchLines": [
+          "# App per winget installieren (Quelle winget oder msstore)",
+          "# Laeuft standardmaessig als angemeldeter Benutzer; das passt zu Store-Apps (Quelle msstore).",
+          "# Fuer Installationen fuer alle Benutzer den Schritt auf \"Dienst\" (SYSTEM) umstellen und die Quelle winget nehmen.",
+          "# Paket und Quelle kommen aus den Projektvariablen WINGET_PAKET und WINGET_QUELLE.",
+          "# Rueckgabe: 0 installiert oder schon vorhanden, 2 Paket oder Quelle ungueltig, 3 winget-Installation fehlgeschlagen,",
+          "#            4 winget nicht gefunden, 1 sonstiger Fehler.",
+          "$paketId = '%WINGET_PAKET%'.Trim()",
+          "$quelle  = '%WINGET_QUELLE%'.Trim().ToLower()",
+          "# Kein ErrorActionPreference Stop: in Windows PowerShell 5.1 wuerde jede stderr-Zeile von winget sonst abbrechen",
+          "trap { [Console]::Out.WriteLine('FEHLER 1: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "if (-not $paketId -or $paketId -match '[\\s*?]') { [Console]::Out.WriteLine('Paket-ID fehlt oder ist ungueltig: \"' + $paketId + '\"'); exit 2 }",
+          "if (@('winget', 'msstore') -notcontains $quelle) { [Console]::Out.WriteLine('Quelle muss winget oder msstore sein, nicht \"' + $quelle + '\"'); exit 2 }",
+          "",
+          "$alsSystem = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value -eq 'S-1-5-18'",
+          "$logOrdner = if ($alsSystem) { Join-Path $env:windir 'Temp' } else { $env:TEMP }",
+          "$logDatei  = Join-Path $logOrdner ('acmp-winget-' + ($paketId -replace '[^A-Za-z0-9._-]', '_') + '.log')",
+          "",
+          "function Finde-Winget {",
+          "    # Als Benutzer gibt es den Aliasnamen winget.exe, als SYSTEM nur die Datei im Paketordner von App Installer",
+          "    $befehl = Get-Command 'winget.exe' -ErrorAction SilentlyContinue",
+          "    if ($befehl) { return $befehl.Source }",
+          "    $programme = if ($env:ProgramW6432) { $env:ProgramW6432 } else { $env:ProgramFiles }",
+          "    $paket = Get-ChildItem -LiteralPath (Join-Path $programme 'WindowsApps') -Directory -Filter 'Microsoft.DesktopAppInstaller_*__8wekyb3d8bbwe' -ErrorAction SilentlyContinue |",
+          "        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'winget.exe') } |",
+          "        Sort-Object -Property LastWriteTime -Descending | Select-Object -First 1",
+          "    if ($paket) { return (Join-Path $paket.FullName 'winget.exe') }",
+          "    return $null",
+          "}",
+          "",
+          "$winget = Finde-Winget",
+          "if (-not $winget) { [Console]::Out.WriteLine('winget.exe (App Installer) wurde nicht gefunden.'); exit 4 }",
+          "[Console]::Out.WriteLine('winget: ' + $winget + ($(if ($alsSystem) { ' (als SYSTEM)' } else { ' (als ' + $env:USERNAME + ')' })))",
+          "",
+          "# Schon installiert? winget list liefert 0, wenn das Paket gefunden wurde",
+          "$null = & $winget list --id $paketId --exact --source $quelle --accept-source-agreements --disable-interactivity 2>&1",
+          "if ($LASTEXITCODE -eq 0) {",
+          "    [Console]::Out.WriteLine($paketId + ' ist schon installiert, nichts zu tun.')",
+          "    exit 0",
+          "}",
+          "",
+          "[Console]::Out.WriteLine('Installiere ' + $paketId + ' aus ' + $quelle + ' ...')",
+          "$null = & $winget install --id $paketId --exact --source $quelle --silent --accept-source-agreements --accept-package-agreements --disable-interactivity --log $logDatei 2>&1",
+          "$code = $LASTEXITCODE",
+          "# -1978335135 = 0x8A150061: Paket ist bereits installiert",
+          "if ($code -eq 0 -or $code -eq -1978335135) {",
+          "    [Console]::Out.WriteLine($paketId + ' ist installiert. Protokoll: ' + $logDatei)",
+          "    exit 0",
+          "}",
+          "[Console]::Out.WriteLine('winget install meldet Code ' + $code + '. Protokoll: ' + $logDatei)",
+          "exit 3"
+        ],
+        "ExitCode": "WINGET_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn die Installation fehlgeschlagen ist",
+      "fields": {
+        "Value_1": "%WINGET_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "%WINGET_PAKET% nicht installiert, Code %WINGET_EXITCODE% (2 = Parameter ungültig, 3 = winget-Fehler, 4 = winget fehlt)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

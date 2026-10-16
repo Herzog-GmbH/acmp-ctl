@@ -1,0 +1,225 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "edge-startseite",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Edge-Startseite festlegen",
+  "summary": "Legt per Richtlinie fest, welche Seiten Microsoft Edge beim Start öffnet und welche Adresse die Home-Schaltfläche hat. Wahlweise erzwungen oder nur empfohlen, wie es eine Gruppenrichtlinie tun würde.",
+  "description": "### So funktioniert es\nDas Skript prüft die Adressen und schreibt diese Richtlinien, bei `MODUS` `erzwingen` unter `HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge`, bei `empfehlen` unter `…\\Edge\\Recommended`:\n- `RestoreOnStartup` = 4 (beim Start bestimmte Seiten öffnen)\n- `RestoreOnStartupURLs` mit den Adressen aus `STARTSEITEN` (alte Einträge werden ersetzt)\n- `HomepageLocation` aus `STARTSEITE_HOME` und `HomepageIsNewTabPage` = 0\n- `ShowHomeButton` = 1 oder 0, wenn `HOME_SCHALTFLAECHE` `ja` oder `nein` ist\n\nDieselben Werte im jeweils anderen Zweig werden entfernt, damit sich erzwungene und empfohlene Einstellungen nicht widersprechen. Danach liest das Skript die Werte zur Kontrolle zurück.\n\n### Ergebnis und Exitcodes\nDer Exitcode steht in `EDGE_EXITCODE`. Ist er nicht 0, endet der Command mit Fehler.\n- `0` gesetzt\n- `2` Parameter ungültig, z. B. Adresse ohne https://\n- `1` sonstiger Fehler\n\n### Hinweise\n- Edge übernimmt die Richtlinien nach einem Neustart des Browsers oder spätestens beim nächsten Richtlinien-Abgleich. Kontrolle in Edge unter `edge://policy`.\n- Adressen mit Prozentzeichen (z. B. `%20`) nicht verwenden, ACMP ersetzt sie als Variablen.\n- Alle Parameter sind Projektvariablen und lassen sich später in der Console ändern.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Windows-Einstellungen",
+  "tags": [
+    "Edge",
+    "Browser",
+    "Startseite",
+    "Richtlinie",
+    "Registry"
+  ],
+  "applications": [
+    {
+      "name": "Microsoft Edge",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "STARTSEITEN",
+      "description": "Adresse(n), die Edge beim Start öffnet, jeweils mit https:// oder http://. Mehrere mit Semikolon trennen.",
+      "required": true
+    },
+    {
+      "name": "STARTSEITE_HOME",
+      "description": "Adresse der Home-Schaltfläche. Leer = erste Adresse aus STARTSEITEN.",
+      "default": ""
+    },
+    {
+      "name": "HOME_SCHALTFLAECHE",
+      "description": "„ja“ zeigt die Home-Schaltfläche, „nein“ blendet sie aus, leer lässt die Einstellung unberührt.",
+      "default": "ja"
+    },
+    {
+      "name": "MODUS",
+      "description": "„erzwingen“: Benutzer können die Seiten nicht ändern. „empfehlen“: Edge übernimmt die Werte als Vorgabe, Benutzer dürfen sie ändern.",
+      "default": "erzwingen"
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als SYSTEM und schreibt unter HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge. Kein Neustart.",
+      "Edge wertet diese Richtlinien nur auf verwalteten Rechnern aus: Mitglied einer Active-Directory-Domäne, in Entra ID eingebunden oder per MDM verwaltet. Sonst ignoriert Edge sie (das Skript weist darauf hin).",
+      "Eine Gruppenrichtlinie für dieselben Werte überschreibt die Einstellungen beim nächsten gpupdate."
+    ]
+  },
+  "variables": [
+    {
+      "name": "STARTSEITEN",
+      "value": "{{STARTSEITEN}}"
+    },
+    {
+      "name": "STARTSEITE_HOME",
+      "value": "{{STARTSEITE_HOME}}"
+    },
+    {
+      "name": "HOME_SCHALTFLAECHE",
+      "value": "{{HOME_SCHALTFLAECHE}}"
+    },
+    {
+      "name": "MODUS",
+      "value": "{{MODUS}}"
+    },
+    {
+      "name": "EDGE_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Edge-Richtlinien für Start- und Home-Seite setzen (PowerShell)",
+      "summary": "RestoreOnStartup = 4, RestoreOnStartupURLs, HomepageLocation, ShowHomeButton unter HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in EDGE_EXITCODE: 0 gesetzt, 2 Parameter ungültig, 1 sonstiger Fehler.",
+        "BatchLines": [
+          "# Microsoft Edge: Seiten beim Start und Startseite (Home) per Richtlinie setzen",
+          "# ACMP CTL, Vorlage edge-startseite. Laeuft als SYSTEM (64-Bit-PowerShell).",
+          "# Keine Prozentzeichen verwenden: ACMP ersetzt sie durch Projektvariablen.",
+          "# Gewollt ersetzt werden nur STARTSEITEN, STARTSEITE_HOME, HOME_SCHALTFLAECHE und MODUS.",
+          "#",
+          "# Schreibt unter HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge (MODUS erzwingen)",
+          "# bzw. HKLM\\SOFTWARE\\Policies\\Microsoft\\Edge\\Recommended (MODUS empfehlen):",
+          "#   RestoreOnStartup       = 4 (beim Start bestimmte Seiten oeffnen)",
+          "#   RestoreOnStartupURLs   = 1..n aus STARTSEITEN",
+          "#   HomepageLocation       = STARTSEITE_HOME (leer: erste Startseite), HomepageIsNewTabPage = 0",
+          "#   ShowHomeButton         = 1 bei ja, 0 bei nein, bleibt unberuehrt bei leer",
+          "# Dieselben Werte im jeweils anderen Zweig werden entfernt, damit sich nichts widerspricht.",
+          "#",
+          "# Rueckgabe: 0 gesetzt, 2 Parameter ungueltig, 1 sonstiger Fehler",
+          "",
+          "$startseitenText = @'",
+          "%STARTSEITEN%",
+          "'@",
+          "$homeText = @'",
+          "%STARTSEITE_HOME%",
+          "'@",
+          "$homeSchaltflaeche = '%HOME_SCHALTFLAECHE%'.Trim().ToLower()",
+          "$modus = '%MODUS%'.Trim().ToLower()",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "function Melde([string]$text) { [Console]::Out.WriteLine($text) }",
+          "function Abbruch([int]$code, [string]$text) { Melde ('FEHLER ' + $code + ': ' + $text); exit $code }",
+          "trap { Melde ('FEHLER 1: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "function IstUrl([string]$url) {",
+          "    $uri = $null",
+          "    if (-not [Uri]::TryCreate($url, [UriKind]::Absolute, [ref]$uri)) { return $false }",
+          "    return ($uri.Scheme -eq 'https' -or $uri.Scheme -eq 'http')",
+          "}",
+          "function Setze([string]$pfad, [string]$name, $wert, [string]$typ) {",
+          "    if (-not (Test-Path -LiteralPath $pfad)) { New-Item -Path $pfad -Force | Out-Null }",
+          "    New-ItemProperty -LiteralPath $pfad -Name $name -Value $wert -PropertyType $typ -Force | Out-Null",
+          "}",
+          "",
+          "# Parameter pruefen",
+          "$startseiten = @($startseitenText -split '[;\\r\\n]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ })",
+          "if ($startseiten.Count -eq 0) { Abbruch 2 'STARTSEITEN ist leer.' }",
+          "foreach ($u in $startseiten) { if (-not (IstUrl $u)) { Abbruch 2 ('Keine gueltige http(s)-Adresse in STARTSEITEN: ' + $u) } }",
+          "$homepage = $homeText.Trim()",
+          "if (-not $homepage) { $homepage = $startseiten[0] }",
+          "if (-not (IstUrl $homepage)) { Abbruch 2 ('STARTSEITE_HOME ist keine gueltige http(s)-Adresse: ' + $homepage) }",
+          "if ($homeSchaltflaeche -notin @('ja', 'nein', '')) { Abbruch 2 ('HOME_SCHALTFLAECHE muss ja, nein oder leer sein, ist: ' + $homeSchaltflaeche) }",
+          "if ($modus -eq '') { $modus = 'erzwingen' }",
+          "if ($modus -notin @('erzwingen', 'empfehlen')) { Abbruch 2 ('MODUS muss erzwingen oder empfehlen sein, ist: ' + $modus) }",
+          "",
+          "$basis = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Edge'",
+          "$empfohlen = $basis + '\\Recommended'",
+          "if ($modus -eq 'erzwingen') { $ziel = $basis; $anderer = $empfohlen } else { $ziel = $empfohlen; $anderer = $basis }",
+          "$namen = @('RestoreOnStartup', 'HomepageLocation', 'HomepageIsNewTabPage')",
+          "if ($homeSchaltflaeche) { $namen += 'ShowHomeButton' }",
+          "",
+          "# Gegenstueck im anderen Zweig entfernen",
+          "if (Test-Path -LiteralPath $anderer) {",
+          "    foreach ($n in $namen) { Remove-ItemProperty -LiteralPath $anderer -Name $n -ErrorAction SilentlyContinue }",
+          "    $alteListe = $anderer + '\\RestoreOnStartupURLs'",
+          "    if (Test-Path -LiteralPath $alteListe) { Remove-Item -LiteralPath $alteListe -Recurse -Force }",
+          "}",
+          "",
+          "# Setzen",
+          "Setze $ziel 'RestoreOnStartup' 4 'DWord'",
+          "$liste = $ziel + '\\RestoreOnStartupURLs'",
+          "if (Test-Path -LiteralPath $liste) { Remove-Item -LiteralPath $liste -Recurse -Force }",
+          "New-Item -Path $liste -Force | Out-Null",
+          "for ($i = 0; $i -lt $startseiten.Count; $i++) { Setze $liste ([string]($i + 1)) $startseiten[$i] 'String' }",
+          "Setze $ziel 'HomepageLocation' $homepage 'String'",
+          "Setze $ziel 'HomepageIsNewTabPage' 0 'DWord'",
+          "if ($homeSchaltflaeche -eq 'ja') { Setze $ziel 'ShowHomeButton' 1 'DWord' }",
+          "if ($homeSchaltflaeche -eq 'nein') { Setze $ziel 'ShowHomeButton' 0 'DWord' }",
+          "",
+          "# Kontrolle",
+          "$gelesen = Get-ItemProperty -LiteralPath $ziel",
+          "$anzahl = @((Get-Item -LiteralPath $liste).GetValueNames()).Count",
+          "if ($gelesen.RestoreOnStartup -ne 4 -or $gelesen.HomepageLocation -ne $homepage -or $anzahl -ne $startseiten.Count) {",
+          "    Abbruch 1 'Kontrolle nach dem Schreiben fehlgeschlagen.'",
+          "}",
+          "Melde ('Edge-Richtlinien gesetzt (' + $modus + ' unter ' + $ziel + ')')",
+          "Melde ('Seiten beim Start: ' + ($startseiten -join ', '))",
+          "Melde ('Startseite (Home): ' + $homepage + $(if ($homeSchaltflaeche) { ', Home-Schaltflaeche: ' + $homeSchaltflaeche } else { '' }))",
+          "",
+          "# Edge wertet diese Richtlinien nur auf verwalteten Rechnern aus (Domaene, Entra ID oder MDM)",
+          "$verwaltet = [bool](Get-CimInstance -ClassName Win32_ComputerSystem).PartOfDomain",
+          "if (-not $verwaltet) {",
+          "    try { $verwaltet = [bool]((& (Join-Path $env:windir 'System32\\dsregcmd.exe') /status) -match 'AzureAdJoined\\s*:\\s*YES') } catch { }",
+          "}",
+          "if (-not $verwaltet) {",
+          "    Melde 'HINWEIS: Der Rechner ist weder in einer Domaene noch in Entra ID. Ohne MDM-Verwaltung ignoriert Edge diese Richtlinien.'",
+          "}",
+          "exit 0"
+        ],
+        "ExitCode": "EDGE_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn das Skript einen Fehler meldet",
+      "fields": {
+        "Value_1": "%EDGE_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "Edge-Richtlinien nicht gesetzt, Code %EDGE_EXITCODE% (siehe Protokoll des PowerShell-Schritts)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

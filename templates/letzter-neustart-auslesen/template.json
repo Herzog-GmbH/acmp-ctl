@@ -1,0 +1,143 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "letzter-neustart-auslesen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Letzten Neustart auslesen",
+  "summary": "Liest den letzten Systemstart und die Laufzeit in Tagen aus und speichert beides im Feld „LetzterNeustart“, z. B. 2026-10-14 07:32 (2 Tage). So findet ihr Clients, die seit Wochen nicht neu gestartet wurden und Updates deshalb nicht abschließen.",
+  "description": "### So funktioniert es\n1. Das Skript liest `LastBootUpTime` aus `Win32_OperatingSystem` und rechnet die Laufzeit in ganzen Tagen aus.\n2. Ist der Schnellstart aktiv (`HiberbootEnabled` = 1 und Ruhezustand nicht aus), hängt es `Schnellstart an` an.\n3. Der zweite Schritt speichert den Text im Feld „LetzterNeustart“.\n\n### Ergebnis und Exitcodes\n- Format `JJJJ-MM-TT HH:MM (n Tage)`, z. B. `2026-09-01 06:58 (45 Tage, Schnellstart an)`. Durch das Datumsformat lässt sich das Feld als Text sortieren.\n- `0`: gelesen. `1`: Fehler, im Feld steht `Fehler: …`. Der Exitcode steht in der Variable `LETZTER_NEUSTART_EXIT`.\n\n### Hinweise\n- Die Tage gelten zum Zeitpunkt der Ausführung. Danach altert der Wert.\n- Mit Schnellstart ist „Herunterfahren“ kein Neustart. Ein Rechner, der jeden Abend aus ist, kann dann trotzdem viele Tage Laufzeit haben. Nur „Neu starten“ setzt die Zeit zurück.\n- Die Uhrzeit ist die lokale Zeit des Clients.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Inventar",
+  "tags": [
+    "Neustart",
+    "Uptime",
+    "Laufzeit",
+    "Schnellstart",
+    "Updates",
+    "individuelles Feld"
+  ],
+  "applications": [
+    {
+      "name": "Windows",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [
+      {
+        "name": "LetzterNeustart",
+        "type": "Text",
+        "maxLength": 50,
+        "table": "Attribute",
+        "folder": "Client Info"
+      }
+    ],
+    "globalAccount": null,
+    "notes": [
+      "Das individuelle Feld „LetzterNeustart“ (Text, 50 Zeichen) muss vor der Installation unter Client Info → Attribute existieren. Bezeichnung DE und EN genau „LetzterNeustart“, ohne Leerzeichen. Feld- und Tabellen-IDs setzt die Installation ein.",
+      "Läuft als Dienst (SYSTEM) und ändert nichts am Client. Startet den Client nicht neu.",
+      "Für einen aktuellen Stand regelmäßig ausführen, z. B. täglich per Zeitplan."
+    ]
+  },
+  "variables": [
+    {
+      "name": "LETZTER_NEUSTART",
+      "value": ""
+    },
+    {
+      "name": "LETZTER_NEUSTART_EXIT",
+      "value": ""
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Letzten Systemstart und Laufzeit in Tagen lesen",
+      "fields": {
+        "BatchLines": [
+          "# Letzten Systemstart und Laufzeit in ganzen Tagen lesen",
+          "# Ausgabe z. B.: 2026-10-14 07:32 (2 Tage) oder 2026-09-01 06:58 (45 Tage, Schnellstart an)",
+          "# Exitcode: 0 = gelesen, 1 = Fehler (Meldung steht in der Ausgabe)",
+          "$max = 50",
+          "try {",
+          "    $boot = (Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop).LastBootUpTime",
+          "    $tage = [int][math]::Floor(((Get-Date) - $boot).TotalDays)",
+          "    if ($tage -lt 0) { $tage = 0 }",
+          "    if ($tage -eq 1) { $einheit = ' Tag' } else { $einheit = ' Tage' }",
+          "    $text = $boot.ToString('yyyy-MM-dd HH:mm', [System.Globalization.CultureInfo]::InvariantCulture) + ' (' + $tage + $einheit",
+          "    # Mit Schnellstart (Hiberboot) zählt Herunterfahren nicht als Neustart. Das gehört zur Einordnung dazu.",
+          "    $hiberboot = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Power' -Name 'HiberbootEnabled' -ErrorAction SilentlyContinue).HiberbootEnabled",
+          "    $ruhezustand = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Power' -Name 'HibernateEnabled' -ErrorAction SilentlyContinue).HibernateEnabled",
+          "    if ($hiberboot -eq 1 -and $ruhezustand -ne 0) { $text += ', Schnellstart an' }",
+          "    $text += ')'",
+          "    Write-Output $text",
+          "    exit 0",
+          "}",
+          "catch {",
+          "    $text = 'Fehler: ' + $_.Exception.Message",
+          "    if ($text.Length -gt $max) { $text = $text.Substring(0, $max) }",
+          "    Write-Output $text",
+          "    exit 1",
+          "}"
+        ],
+        "ExitCode": "LETZTER_NEUSTART_EXIT",
+        "OutputLines": "LETZTER_NEUSTART",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TStoreValueOnACMPServer",
+      "description": "Ergebnis im Feld „LetzterNeustart“ speichern",
+      "fields": {
+        "_DataVersion": "2",
+        "Tablename": "{{CF:LetzterNeustart:Tablename}}",
+        "Fieldname": "{{CF:LetzterNeustart:Fieldname}}",
+        "FieldDisplayName": "LetzterNeustart",
+        "FieldType": "1",
+        "FieldID": "{{CF:LetzterNeustart:FieldID}}",
+        "Value": "%LETZTER_NEUSTART%",
+        "TableType": "0",
+        "TableDisplayName": "Attribute",
+        "TableID": "{{CF:LetzterNeustart:TableID}}",
+        "Tablenames": "",
+        "Fieldnames": "",
+        "FieldDisplayNames": "",
+        "FieldTypes": "",
+        "FieldIDs": "",
+        "Values": "",
+        "TableTypes": "",
+        "TableDisplayNames": "",
+        "TableIds": "",
+        "FolderTypes": "",
+        "FolderNames": "",
+        "FolderGuids": "",
+        "ClientID": "",
+        "ClearPreviousValues": "False",
+        "StoreMultiValue": "False",
+        "StoredCustomFields": "{\"StoredCustomFields\":[{\"Id\":\"{{CF:LetzterNeustart:FieldID}}\",\"ParentId\":\"{{CF:LetzterNeustart:TableID}}\",\"DisplayName_en\":\"LetzterNeustart\",\"DisplayName_de\":\"LetzterNeustart\",\"IsMultiField\":false,\"InputMethod\":\"imText\",\"MaxLength\":50,\"FieldHeight\":0,\"RangeMin\":0,\"RangeMax\":0,\"DecimalPlaces\":0,\"HasRange\":false}]}",
+        "StoredTables": "{\"StoredTables\":[{\"Id\":\"{{CF:LetzterNeustart:TableID}}\",\"ParentId\":\"{{CF:LetzterNeustart:FolderID}}\",\"DisplayName\":\"Attribute\",\"IsMultiTable\":false}]}",
+        "StoredFolders": "{\"StoredFolders\":[{\"Id\":\"{{CF:LetzterNeustart:FolderID}}\",\"ParentId\":\"{{CF:LetzterNeustart:FolderParentID}}\",\"DisplayName\":\"Client Info\"}]}"
+      }
+    }
+  ],
+  "files": []
+}

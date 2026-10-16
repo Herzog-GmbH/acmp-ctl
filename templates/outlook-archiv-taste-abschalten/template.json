@@ -1,0 +1,69 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "outlook-archiv-taste-abschalten",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Outlook: Archivieren mit der Rücktaste abschalten",
+  "summary": "Verhindert, dass Outlook für Microsoft 365 markierte Mails mit der Rücktaste (Backspace) ins Archiv verschiebt. Das passiert sonst leicht aus Versehen. Die Archiv-Schaltfläche selbst bleibt.",
+  "description": "## So funktioniert es\nSetzt beim angemeldeten Benutzer `DisableOneClickArchive` = 1 (DWORD) unter `HKCU\\SOFTWARE\\Microsoft\\Office\\16.0\\Outlook\\Options`. Diesen Wert nennt Microsoft für die Einstellung per Office-Anpassungstool.\n\n## Ergebnis/Exitcodes\n- Nach dem nächsten Start von Outlook verschiebt die Rücktaste nichts mehr ins Archiv.\n- Der Schritt meldet nur dann einen Fehler, wenn der Wert nicht geschrieben werden konnte.\n\n## Hinweise\n- Gilt laut Microsoft nur für Outlook für Microsoft 365 (klassisch), nicht für Kaufversionen wie Outlook 2019, 2021 oder 2024 und nicht für das neue Outlook.\n- Per Gruppenrichtlinie liegt derselbe Wert unter `HKCU\\SOFTWARE\\Policies\\Microsoft\\Office\\16.0\\Outlook\\Options`.\n- Rückgängig: Wert auf 0 setzen oder löschen.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Software",
+  "tags": [
+    "Outlook",
+    "Microsoft 365",
+    "Archiv",
+    "Registry",
+    "HKCU"
+  ],
+  "applications": [
+    {
+      "name": "Outlook für Microsoft 365",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als angemeldeter Benutzer (Ausführen als: Benutzer), weil der Wert in dessen HKEY_CURRENT_USER gehört. Ohne angemeldeten Benutzer kann der Schritt nicht laufen.",
+      "Outlook muss neu gestartet werden, damit die Einstellung greift."
+    ]
+  },
+  "variables": [],
+  "steps": [
+    {
+      "class": "TModifyReg",
+      "description": "DisableOneClickArchive = 1 beim angemeldeten Benutzer setzen (HKCU, DWORD)",
+      "fields": {
+        "_DataVersion": "2",
+        "isSystem": "False",
+        "ActionForExisting": "0",
+        "Rootkey": "2147483649",
+        "Key": "SOFTWARE\\Microsoft\\Office\\16.0\\Outlook\\Options",
+        "Valuename": "DisableOneClickArchive",
+        "ValueType": "2",
+        "NewValue": "1",
+        "Binary_Use_Memo": "True",
+        "Binary_Memo_Text": "",
+        "Multi_SZ_Values": "",
+        "Binary_Load_From_File": "False",
+        "Binary_File_Name": "",
+        "Use64BitRegistry": "True",
+        "CalcOption": "coDez"
+      }
+    }
+  ],
+  "files": []
+}

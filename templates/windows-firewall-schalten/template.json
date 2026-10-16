@@ -1,0 +1,138 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "windows-firewall-schalten",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Windows-Firewall ein- oder ausschalten",
+  "summary": "Schaltet die Windows-Firewall für alle Profile (Domäne, Privat, Öffentlich) ein oder aus. Der Zustand ist ein Parameter, so reicht ein Command für beides. Danach prüft der Command, ob der Zustand auch wirklich gilt.",
+  "description": "## So funktioniert es\n1. Der gewünschte Zustand steht in der Projektvariablen `FIREWALL_ZUSTAND` (`an` oder `aus`). Er kommt beim Installieren aus dem Parameter `ZUSTAND` und lässt sich in der Console ändern.\n2. `netsh advfirewall set allprofiles state on|off` setzt alle drei Profile.\n3. Danach liest der Command den wirksamen Zustand (`Get-NetFirewallProfile -PolicyStore ActiveStore`, also inklusive Gruppenrichtlinien) und gibt ihn je Profil aus.\n\n## Ergebnis/Exitcodes\n- 0 = alle Profile haben den gewünschten Zustand\n- 2 = unbekannter Zustand in `FIREWALL_ZUSTAND`\n- 3 = netsh meldet einen Fehler\n- 4 = mindestens ein Profil hat danach einen anderen Zustand, meist weil eine Gruppenrichtlinie ihn festlegt\n\nBei jedem Code außer 0 endet der Command mit Fehler.\n\n## Hinweise\n- Ausschalten ist ein Sicherheitsrisiko. Nur kurz zur Fehlersuche nutzen und danach wieder einschalten.\n- Wenn eine Gruppenrichtlinie oder ein Virenschutz die Firewall verwaltet, gewinnt deren Einstellung.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Sicherheit",
+  "tags": [
+    "Firewall",
+    "netsh",
+    "Windows Defender Firewall",
+    "Netzwerk",
+    "Fehlersuche"
+  ],
+  "applications": [
+    {
+      "name": "Windows Defender Firewall",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "ZUSTAND",
+      "description": "an = Firewall einschalten, aus = Firewall ausschalten",
+      "default": "an",
+      "required": true
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM). Kein Neustart nötig.",
+      "Für beide Richtungen kann man den Command zweimal installieren, einmal mit an und einmal mit aus."
+    ]
+  },
+  "variables": [
+    {
+      "name": "FIREWALL_ZUSTAND",
+      "value": "{{ZUSTAND}}"
+    },
+    {
+      "name": "FW_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Firewall für alle Profile schalten und wirksamen Zustand prüfen",
+      "fields": {
+        "BatchLines": [
+          "# Windows-Firewall fuer alle Profile (Domaene, Privat, Oeffentlich) ein- oder ausschalten",
+          "# Laeuft als SYSTEM. Der gewuenschte Zustand kommt aus der Projektvariablen FIREWALL_ZUSTAND (an oder aus).",
+          "# Rueckgabe: 0 erledigt, 2 Zustand unbekannt, 3 netsh meldet einen Fehler,",
+          "#            4 wirksamer Zustand weicht ab (meist erzwingt eine Gruppenrichtlinie etwas anderes).",
+          "$wunsch = '%FIREWALL_ZUSTAND%'.Trim().ToLower()",
+          "if (@('an', 'ein', 'on', '1', 'true') -contains $wunsch) {",
+          "    $aktiv = $true",
+          "    $netshWert = 'on'",
+          "} elseif (@('aus', 'off', '0', 'false') -contains $wunsch) {",
+          "    $aktiv = $false",
+          "    $netshWert = 'off'",
+          "} else {",
+          "    [Console]::Out.WriteLine('Unbekannter Zustand \"' + $wunsch + '\". Erlaubt sind an oder aus.')",
+          "    exit 2",
+          "}",
+          "",
+          "$ausgabe = @(& netsh.exe advfirewall set allprofiles state $netshWert 2>&1)",
+          "$code = $LASTEXITCODE",
+          "if ($code -ne 0) {",
+          "    [Console]::Out.WriteLine('netsh meldet Code ' + $code + ': ' + (($ausgabe | ForEach-Object { [string]$_ }) -join ' '))",
+          "    exit 3",
+          "}",
+          "",
+          "# Wirksamen Zustand pruefen (ActiveStore enthaelt auch Gruppenrichtlinien)",
+          "$abweichend = 0",
+          "foreach ($fwProfil in @(Get-NetFirewallProfile -PolicyStore ActiveStore -ErrorAction SilentlyContinue)) {",
+          "    [Console]::Out.WriteLine('Profil ' + $fwProfil.Name + ': ' + $fwProfil.Enabled)",
+          "    if ([string]$fwProfil.Enabled -ne [string]$aktiv) { $abweichend++ }",
+          "}",
+          "if ($abweichend -gt 0) {",
+          "    [Console]::Out.WriteLine('Achtung: ' + $abweichend + ' Profil(e) haben nicht den gewuenschten Zustand. Wahrscheinlich legt eine Gruppenrichtlinie den Zustand fest.')",
+          "    exit 4",
+          "}",
+          "[Console]::Out.WriteLine('Windows-Firewall ist jetzt ' + $(if ($aktiv) { 'eingeschaltet' } else { 'ausgeschaltet' }) + '.')",
+          "exit 0"
+        ],
+        "ExitCode": "FW_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn die Firewall nicht den gewünschten Zustand hat",
+      "fields": {
+        "Value_1": "%FW_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "Firewall nicht auf %FIREWALL_ZUSTAND% gesetzt, Code %FW_EXITCODE% (2 = Zustand unbekannt, 3 = netsh-Fehler, 4 = Gruppenrichtlinie legt anderen Zustand fest)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

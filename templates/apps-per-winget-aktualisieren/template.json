@@ -1,0 +1,207 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "apps-per-winget-aktualisieren",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Alle Apps per winget aktualisieren",
+  "summary": "Aktualisiert alle systemweit installierten Programme, für die winget eine neuere Version kennt. Läuft als SYSTEM, still und ohne Dialog. Pakete auf der Ausnahmeliste bleiben unverändert.",
+  "description": "### So funktioniert es\n1. Für SYSTEM liegt winget nicht im Suchpfad. Das Skript sucht `winget.exe` im neuesten App-Installer-Paket unter `C:\\Program Files\\WindowsApps` (x64 oder arm64).\n2. `winget upgrade --source winget` listet die verfügbaren Updates. Das Skript liest daraus die Paket-IDs.\n3. Jedes Paket, das nicht auf der Ausnahmeliste steht, aktualisiert `winget upgrade --id <ID> --exact --silent` mit `--accept-source-agreements --accept-package-agreements`.\n4. Das Ergebnis je Paket steht im Schritt-Protokoll.\n\n### Ergebnis und Exitcodes\n- Exitcode in `WINGET_EXITCODE`: `0` alles aktuell oder aktualisiert. `1` mindestens ein Update fehlgeschlagen. `2` winget nicht gefunden. `3` Update-Liste nicht lesbar.\n- Bei einem Exitcode ungleich 0 beendet sich der Command mit Fehler.\n- Updates, die zum Abschluss einen Neustart brauchen, gelten als erfolgreich (winget `0x8A150109`, `0x8A15010B`). Der Command startet den PC nicht neu. Ein Installer kann aber selbst einen Neustart auslösen (`0x8A15010B`).\n- `0x8A15010A` heißt: Das Update ließ sich erst nach einem Neustart installieren. Es zählt als Fehler.\n\n### Hinweise\n- Als SYSTEM sieht winget nur systemweit installierte Programme. Programme, die nur im Benutzerprofil installiert sind, bleiben außen vor.\n- Nur die Quelle `winget` wird genutzt, nicht der Microsoft Store. Gepinnte Pakete (`winget pin`) überspringt winget.\n- Ein laufendes Programm kann sein Update verhindern. Den Fehlercode zeigt das Protokoll.\n- Meldet winget `0xC0000135`, fehlt auf dem Client meist die Visual-C++-Laufzeit 2015-2022.\n- Eine einzelne App installiert die Vorlage `app-per-winget-installieren`.\n- Die IDs stammen aus der Tabellenausgabe von winget. Erkennt das Skript die Tabelle nicht, aktualisiert es nichts und zeigt die letzten Zeilen der winget-Ausgabe im Protokoll.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Software",
+  "tags": [
+    "winget",
+    "Updates",
+    "Patch-Management",
+    "App-Installer",
+    "Software-Aktualisierung"
+  ],
+  "applications": [
+    {
+      "name": "winget (Windows-Paket-Manager)",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "App-Installer",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "AUSNAHMEN",
+      "description": "winget-IDs, die nicht aktualisiert werden, durch Komma getrennt. Platzhalter * erlaubt, z. B. Mozilla.Firefox*,Oracle.JavaRuntimeEnvironment. Leer = keine Ausnahme.",
+      "default": ""
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM) in 64-Bit-PowerShell. Kein Neustart.",
+      "Der App-Installer (Microsoft.DesktopAppInstaller) mit winget 1.6 oder neuer muss installiert sein. Auf Windows Server und LTSC fehlt er oft.",
+      "Der Client braucht Internetzugriff auf die winget-Quelle und die Download-Server der Hersteller.",
+      "Updates laufen ohne vorherigen Test durch. Kritische Anwendungen gehören auf die Ausnahmeliste.",
+      "Die Ausnahmeliste steht als Projektvariable WINGET_AUSNAHMEN im Command und lässt sich in der Console ändern."
+    ]
+  },
+  "variables": [
+    {
+      "name": "WINGET_AUSNAHMEN",
+      "value": "{{AUSNAHMEN}}"
+    },
+    {
+      "name": "WINGET_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "winget als SYSTEM suchen und alle Apps aktualisieren",
+      "summary": "winget upgrade --source winget lesen, dann je Paket winget upgrade --id <ID> --exact --silent (außer Ausnahmen)",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in WINGET_EXITCODE: 0 ok; 1 Update fehlgeschlagen; 2 winget fehlt; 3 Liste nicht lesbar.",
+        "BatchLines": [
+          "# Anwendungen per winget aktualisieren (Quelle winget). Laeuft als SYSTEM (64 Bit) und sieht daher nur systemweit installierte Programme.",
+          "# Rueckgabe in WINGET_EXITCODE: 0 = alles aktuell oder aktualisiert, 1 = mindestens ein Update fehlgeschlagen,",
+          "#                               2 = winget nicht gefunden, 3 = Update-Liste nicht lesbar",
+          "# Keine Prozentzeichen im Code: ACMP ersetzt sie durch Variablen.",
+          "",
+          "$ausnahmenText = @'",
+          "%WINGET_AUSNAHMEN%",
+          "'@",
+          "$ausnahmen = @($ausnahmenText -split '[,;\\r\\n]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ })",
+          "",
+          "# winget.exe im App-Installer-Paket suchen (fuer SYSTEM nicht im Suchpfad), neueste Version zuerst",
+          "$basis = Join-Path $env:ProgramFiles 'WindowsApps'",
+          "$kandidaten = @(Get-ChildItem -LiteralPath $basis -Directory -Filter 'Microsoft.DesktopAppInstaller_*' -ErrorAction SilentlyContinue |",
+          "    Where-Object { $_.Name -match '^Microsoft\\.DesktopAppInstaller_[0-9.]+_(x64|arm64)__8wekyb3d8bbwe$' -and (Test-Path -LiteralPath (Join-Path $_.FullName 'winget.exe')) } |",
+          "    Sort-Object -Property @{ Expression = { [version](($_.Name -split '_')[1]) } } -Descending)",
+          "if ($kandidaten.Count -eq 0) {",
+          "    Write-Output 'FEHLER: winget.exe nicht gefunden. Ist der App-Installer (Microsoft.DesktopAppInstaller) installiert?'",
+          "    exit 2",
+          "}",
+          "$winget = Join-Path $kandidaten[0].FullName 'winget.exe'",
+          "Set-Location -LiteralPath $kandidaten[0].FullName",
+          "Write-Output ('winget: ' + $winget)",
+          "if ($ausnahmen.Count -gt 0) { Write-Output ('Ausnahmen: ' + ($ausnahmen -join ', ')) }",
+          "try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding -ArgumentList $false } catch { }",
+          "",
+          "# 1. Verfuegbare Updates lesen (Tabelle: Name, Id, Version, Verfuegbar, Quelle)",
+          "$basisArgs = @('--source', 'winget', '--accept-source-agreements', '--disable-interactivity')",
+          "$zeilen = @(& $winget upgrade @basisArgs 2>&1 | ForEach-Object { ([string]$_ -split \"`r\")[-1] })",
+          "$listCode = $LASTEXITCODE",
+          "$trenner = -1",
+          "for ($i = 1; $i -lt $zeilen.Count; $i++) {",
+          "    if ($zeilen[$i] -match '^-{20,}\\s*$') { $trenner = $i; break }",
+          "}",
+          "if ($trenner -lt 0) {",
+          "    $letzte = (@($zeilen | Where-Object { $_.Trim() } | Select-Object -Last 2) -join ' / ').Trim()",
+          "    # 0x8A150014 = kein Paket gefunden, 0x8A15002B = kein passendes Update",
+          "    if ($listCode -eq 0 -or $listCode -eq -1978335212 -or $listCode -eq -1978335189) {",
+          "        Write-Output ('Keine Aktualisierungen gefunden. ' + $letzte)",
+          "        exit 0",
+          "    }",
+          "    Write-Output ('FEHLER: Update-Liste nicht lesbar, Code ' + $listCode + ': ' + $letzte)",
+          "    exit 3",
+          "}",
+          "$spalten = @([regex]::Matches($zeilen[$trenner - 1], '\\S+'))",
+          "if ($spalten.Count -lt 4) {",
+          "    Write-Output ('FEHLER: Unbekannte Kopfzeile: ' + $zeilen[$trenner - 1])",
+          "    exit 3",
+          "}",
+          "$idStart = $spalten[1].Index",
+          "$idLaenge = $spalten[2].Index - $idStart",
+          "$ids = New-Object 'System.Collections.Generic.List[string]'",
+          "for ($i = $trenner + 1; $i -lt $zeilen.Count; $i++) {",
+          "    $zeile = $zeilen[$i]",
+          "    # Die Tabelle endet mit der ersten Zeile, die nicht auf die Quelle winget endet (Summenzeile, Leerzeile)",
+          "    if ($zeile -notmatch '\\swinget\\s*$' -or $zeile.Length -le ($idStart + $idLaenge)) { break }",
+          "    $id = ($zeile.Substring($idStart, $idLaenge).Trim() -split '\\s+')[0]",
+          "    if ($id -and $id.IndexOf([char]0x2026) -lt 0 -and -not $ids.Contains($id)) { $ids.Add($id) }",
+          "}",
+          "if ($ids.Count -eq 0) {",
+          "    Write-Output 'Keine Aktualisierungen gefunden.'",
+          "    exit 0",
+          "}",
+          "Write-Output ('Verfuegbare Updates: ' + $ids.Count)",
+          "",
+          "# 2. Jedes Paket einzeln aktualisieren, Ausnahmen ueberspringen (Platzhalter * erlaubt)",
+          "$fehler = 0",
+          "$neustart = $false",
+          "foreach ($id in $ids) {",
+          "    if (@($ausnahmen | Where-Object { $id -like $_ }).Count -gt 0) {",
+          "        Write-Output ('Ausgenommen: ' + $id)",
+          "        continue",
+          "    }",
+          "    $aus = @(& $winget upgrade --id $id --exact @basisArgs --silent --accept-package-agreements 2>&1 |",
+          "        ForEach-Object { ([string]$_ -split \"`r\")[-1].Trim() } | Where-Object { $_ })",
+          "    $code = $LASTEXITCODE",
+          "    if ($code -eq 0) {",
+          "        Write-Output ('OK: ' + $id)",
+          "    } elseif ($code -eq -1978334967 -or $code -eq -1978334965) {",
+          "        # 0x8A150109 = Neustart zum Abschluss noetig, 0x8A15010B = Installer hat einen Neustart ausgeloest",
+          "        # (0x8A15010A heisst dagegen: nicht installiert, erst nach einem Neustart moeglich. Das zaehlt unten als Fehler.)",
+          "        Write-Output ('OK, Neustart noetig: ' + $id)",
+          "        $neustart = $true",
+          "    } else {",
+          "        Write-Output ('FEHLER: ' + $id + ' Code 0x' + $code.ToString('X8') + ' ' + ($aus | Select-Object -Last 1))",
+          "        $fehler++",
+          "    }",
+          "}",
+          "if ($neustart) { Write-Output 'Hinweis: Mindestens ein Update braucht einen Neustart. Der Command startet den PC nicht neu.' }",
+          "if ($fehler -gt 0) {",
+          "    Write-Output ('Fertig mit ' + $fehler + ' Fehler(n).')",
+          "    exit 1",
+          "}",
+          "Write-Output 'Fertig.'",
+          "exit 0"
+        ],
+        "ExitCode": "WINGET_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn ein Update fehlschlug",
+      "summary": "WINGET_EXITCODE ungleich 0",
+      "fields": {
+        "Value_1": "%WINGET_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "summary": "Ergebnis: Fehler",
+          "fields": {
+            "Result": "1",
+            "Reason": "winget: Code %WINGET_EXITCODE% (1 = Update fehlgeschlagen, 2 = winget fehlt, 3 = Liste nicht lesbar). Details im Schritt-Protokoll."
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

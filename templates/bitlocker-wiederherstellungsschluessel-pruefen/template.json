@@ -1,0 +1,167 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "bitlocker-wiederherstellungsschluessel-pruefen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "BitLocker-Wiederherstellungskennwort prüfen (ohne Schlüssel)",
+  "summary": "Prüft auf dem Systemlaufwerk, ob BitLocker einen Protektor „Wiederherstellungskennwort“ hat und ob er laut Richtlinie oder Gerätebeitritt im AD bzw. in Entra ID gesichert sein müsste. Den Schlüssel selbst liest und speichert die Vorlage nie. Ergebnis im Feld „BitLockerWiederherstellung“.",
+  "description": "### So funktioniert es\n1. Das Skript holt das Systemlaufwerk (`$env:SystemDrive`, meist `C:`) aus der WMI-Klasse `Win32_EncryptableVolume` und liest den Schutzstatus.\n2. `GetKeyProtectors` mit Typ 3 zählt die Protektoren „Numerisches Kennwort“, also die Wiederherstellungskennwörter. Die Methode gibt nur IDs zurück, nie das Kennwort.\n3. Ob das Kennwort gesichert sein müsste, leitet das Skript aus Richtlinie und Beitritt ab (siehe unten).\n4. Der zweite Schritt speichert den Text im Feld „BitLockerWiederherstellung“.\n\nWoher „Sicherung erwartet“ kommt:\n- `AD (GPO)`: Die GPO „Choose how BitLocker-protected operating system drives can be recovered“ (deutsch „Festlegen, wie BitLocker-geschützte Betriebssystemlaufwerke wiederhergestellt werden können“) speichert in AD DS (`OSActiveDirectoryBackup` = 1). Auch die alte Vista-Richtlinie (`ActiveDirectoryBackup`) zählt.\n- `AD (GPO, Pflicht)`: Zusätzlich darf BitLocker erst starten, wenn die Sicherung in AD DS geklappt hat (`OSRequireActiveDirectoryBackup` = 1).\n- `Entra ID`: Das Gerät ist in Entra ID eingebunden (`HKLM\\SYSTEM\\CurrentControlSet\\Control\\CloudDomainJoin\\JoinInfo`).\n\n### Ergebnis und Exitcodes\n- Beispiel: `Schutz=An; Wiederherstellungskennwort=ja (1); Sicherung erwartet=AD (GPO)`\n- `Schutz`: `An`, `Aus` (nicht verschlüsselt oder angehalten) oder `unbekannt`.\n- `Wiederherstellungskennwort`: `ja (Anzahl)` oder `nein`.\n- `Sicherung erwartet`: `AD (GPO)`, `AD (GPO, Pflicht)`, `Entra ID`, `nein (keine Richtlinie)` oder `nein (weder AD noch Entra)`.\n- Exitcode `0` = geprüft, `1` = BitLocker-WMI nicht lesbar, im Feld steht dann `Fehler: …`. Er steht in der Variable `BITLOCKER_WIEDERHERSTELLUNG_EXIT`.\n\n### Hinweise\n- „Sicherung erwartet“ ist eine Erwartung. Ob der Schlüssel wirklich gesichert ist, seht ihr im AD am Computerobjekt (Reiter „BitLocker-Wiederherstellung“) bzw. in Entra ID am Gerät.\n- Genauer hinsehen bei `Schutz=An` mit `Wiederherstellungskennwort=nein` oder `Sicherung erwartet=nein`.\n- Intune-Richtlinien für BitLocker wertet das Skript nicht einzeln aus. Bei Entra-Geräten nimmt es an, dass der Schlüssel in Entra ID landet.\n- Weitere Laufwerke prüft die Vorlage nicht.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Sicherheit",
+  "tags": [
+    "BitLocker",
+    "Wiederherstellungskennwort",
+    "Verschlüsselung",
+    "Active Directory",
+    "Entra ID",
+    "Audit",
+    "individuelles Feld"
+  ],
+  "applications": [
+    {
+      "name": "BitLocker",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Active Directory",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Microsoft Entra ID",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [
+      {
+        "name": "BitLockerWiederherstellung",
+        "type": "Text",
+        "maxLength": 100,
+        "table": "Attribute",
+        "folder": "Client Info"
+      }
+    ],
+    "globalAccount": null,
+    "notes": [
+      "Das individuelle Feld „BitLockerWiederherstellung“ (Text, 100 Zeichen) muss vor der Installation unter Client Info → Attribute existieren. Bezeichnung DE und EN genau „BitLockerWiederherstellung“, ohne Leerzeichen. Feld- und Tabellen-IDs setzt die Installation ein.",
+      "Läuft als Dienst (SYSTEM) und liest nur. Die BitLocker-WMI-Klasse braucht Administratorrechte.",
+      "Liest keine Wiederherstellungskennwörter: Die WMI-Methode GetKeyProtectors liefert nur die IDs der Protektoren. Auch die IDs werden nicht gespeichert."
+    ]
+  },
+  "variables": [
+    {
+      "name": "BITLOCKER_WIEDERHERSTELLUNG",
+      "value": ""
+    },
+    {
+      "name": "BITLOCKER_WIEDERHERSTELLUNG_EXIT",
+      "value": ""
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Protektor Wiederherstellungskennwort und erwartete Sicherung prüfen (liest keinen Schlüssel)",
+      "fields": {
+        "BatchLines": [
+          "# BitLocker auf dem Systemlaufwerk: Gibt es einen Protektor \"Wiederherstellungskennwort\",",
+          "# und müsste er laut Richtlinie bzw. Gerätebeitritt im AD oder in Entra ID gesichert sein?",
+          "# Der Schlüssel selbst wird NIE gelesen: GetKeyProtectors liefert nur die IDs der Protektoren.",
+          "# Ausgabe z. B.: Schutz=An; Wiederherstellungskennwort=ja (1); Sicherung erwartet=AD (GPO)",
+          "# Exitcode: 0 = geprüft, 1 = Fehler (BitLocker-WMI nicht verfügbar, Meldung steht in der Ausgabe)",
+          "$max = 100",
+          "$laufwerk = $env:SystemDrive",
+          "try {",
+          "    $vol = Get-CimInstance -Namespace 'root\\cimv2\\Security\\MicrosoftVolumeEncryption' -ClassName 'Win32_EncryptableVolume' -Filter (\"DriveLetter='\" + $laufwerk + \"'\") -ErrorAction Stop",
+          "    if (-not $vol) { throw ('Laufwerk ' + $laufwerk + ' nicht gefunden') }",
+          "    # ProtectionStatus: 0 = aus (nicht verschlüsselt oder angehalten), 1 = an, 2 = unbekannt",
+          "    $schutz = 'unbekannt'",
+          "    if ($vol.ProtectionStatus -eq 0) { $schutz = 'Aus' }",
+          "    elseif ($vol.ProtectionStatus -eq 1) { $schutz = 'An' }",
+          "    # KeyProtectorType 3 = numerisches Kennwort (Wiederherstellungskennwort)",
+          "    $antwort = Invoke-CimMethod -InputObject $vol -MethodName 'GetKeyProtectors' -Arguments @{ KeyProtectorType = [uint32]3 } -ErrorAction Stop",
+          "    $anzahl = @($antwort.VolumeKeyProtectorID | Where-Object { $_ }).Count",
+          "}",
+          "catch {",
+          "    $text = 'Fehler: ' + $_.Exception.Message",
+          "    if ($text.Length -gt $max) { $text = $text.Substring(0, $max) }",
+          "    Write-Output $text",
+          "    exit 1",
+          "}",
+          "if ($anzahl -gt 0) { $kennwort = 'ja (' + $anzahl + ')' } else { $kennwort = 'nein' }",
+          "# Wo müsste das Kennwort gesichert sein?",
+          "$ziele = @()",
+          "$fve = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\FVE' -ErrorAction SilentlyContinue",
+          "if ($fve -and ($fve.OSActiveDirectoryBackup -eq 1 -or $fve.ActiveDirectoryBackup -eq 1)) {",
+          "    if ($fve.OSRequireActiveDirectoryBackup -eq 1 -or $fve.RequireActiveDirectoryBackup -eq 1) { $ziele += 'AD (GPO, Pflicht)' } else { $ziele += 'AD (GPO)' }",
+          "}",
+          "if (Get-ChildItem -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\CloudDomainJoin\\JoinInfo' -ErrorAction SilentlyContinue) { $ziele += 'Entra ID' }",
+          "if ($ziele.Count -gt 0) { $sicherung = $ziele -join ', ' }",
+          "elseif ((Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction SilentlyContinue).PartOfDomain) { $sicherung = 'nein (keine Richtlinie)' }",
+          "else { $sicherung = 'nein (weder AD noch Entra)' }",
+          "$text = 'Schutz=' + $schutz + '; Wiederherstellungskennwort=' + $kennwort + '; Sicherung erwartet=' + $sicherung",
+          "if ($text.Length -gt $max) { $text = $text.Substring(0, $max) }",
+          "Write-Output $text",
+          "exit 0"
+        ],
+        "ExitCode": "BITLOCKER_WIEDERHERSTELLUNG_EXIT",
+        "OutputLines": "BITLOCKER_WIEDERHERSTELLUNG",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TStoreValueOnACMPServer",
+      "description": "Ergebnis im Feld „BitLockerWiederherstellung“ speichern",
+      "fields": {
+        "_DataVersion": "2",
+        "Tablename": "{{CF:BitLockerWiederherstellung:Tablename}}",
+        "Fieldname": "{{CF:BitLockerWiederherstellung:Fieldname}}",
+        "FieldDisplayName": "BitLockerWiederherstellung",
+        "FieldType": "1",
+        "FieldID": "{{CF:BitLockerWiederherstellung:FieldID}}",
+        "Value": "%BITLOCKER_WIEDERHERSTELLUNG%",
+        "TableType": "0",
+        "TableDisplayName": "Attribute",
+        "TableID": "{{CF:BitLockerWiederherstellung:TableID}}",
+        "Tablenames": "",
+        "Fieldnames": "",
+        "FieldDisplayNames": "",
+        "FieldTypes": "",
+        "FieldIDs": "",
+        "Values": "",
+        "TableTypes": "",
+        "TableDisplayNames": "",
+        "TableIds": "",
+        "FolderTypes": "",
+        "FolderNames": "",
+        "FolderGuids": "",
+        "ClientID": "",
+        "ClearPreviousValues": "False",
+        "StoreMultiValue": "False",
+        "StoredCustomFields": "{\"StoredCustomFields\":[{\"Id\":\"{{CF:BitLockerWiederherstellung:FieldID}}\",\"ParentId\":\"{{CF:BitLockerWiederherstellung:TableID}}\",\"DisplayName_en\":\"BitLockerWiederherstellung\",\"DisplayName_de\":\"BitLockerWiederherstellung\",\"IsMultiField\":false,\"InputMethod\":\"imText\",\"MaxLength\":100,\"FieldHeight\":0,\"RangeMin\":0,\"RangeMax\":0,\"DecimalPlaces\":0,\"HasRange\":false}]}",
+        "StoredTables": "{\"StoredTables\":[{\"Id\":\"{{CF:BitLockerWiederherstellung:TableID}}\",\"ParentId\":\"{{CF:BitLockerWiederherstellung:FolderID}}\",\"DisplayName\":\"Attribute\",\"IsMultiTable\":false}]}",
+        "StoredFolders": "{\"StoredFolders\":[{\"Id\":\"{{CF:BitLockerWiederherstellung:FolderID}}\",\"ParentId\":\"{{CF:BitLockerWiederherstellung:FolderParentID}}\",\"DisplayName\":\"Client Info\"}]}"
+      }
+    }
+  ],
+  "files": []
+}

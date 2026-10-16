@@ -1,0 +1,188 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "zwangsneustart-nach-tagen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Zwangsneustart nach X Tagen Laufzeit",
+  "summary": "Startet den PC neu, wenn er länger als die eingestellte Zahl an Tagen ohne Neustart läuft. Der Benutzer sieht vorher eine Windows-Meldung mit eigenem Text und Vorlaufzeit. Läuft der PC kürzer, passiert nichts. Server und Domänencontroller lässt er aus.",
+  "description": "### So funktioniert es\n1. Auf Servern und Domänencontrollern (`Win32_OperatingSystem.ProductType` ungleich 1) endet der Command ohne Neustart.\n2. Das Skript liest `LastBootUpTime` aus `Win32_OperatingSystem` und rechnet die Laufzeit in Tagen aus.\n3. Liegt sie unter `NEUSTART_MAX_TAGE`, endet der Command ohne Änderung.\n4. Sonst plant es den Neustart mit `shutdown /r /f /t <Sekunden> /c \"<Text>\"`. Windows zeigt dem angemeldeten Benutzer die Meldung und startet nach der Vorlaufzeit neu. Offene Programme werden dabei geschlossen (`/f`).\n\n### Ergebnis und Exitcodes\n- Exitcode in `NEUSTART_EXITCODE`: `0` kein Neustart nötig, kein Arbeitsplatz-PC oder Neustart geplant, auch wenn schon einer geplant war. `1` shutdown.exe meldet einen Fehler. `2` Parameter ungültig.\n- Bei `1` und `2` beendet sich der Command mit Fehler.\n\n### Hinweise\n- Mit Schnellstart ist „Herunterfahren“ kein Neustart. Die Laufzeit zählt dann weiter, bis der PC wirklich neu startet. Genau dafür ist dieser Command gedacht.\n- Im Text setzt das Skript `[TAGE]` (Laufzeit) und `[MINUTEN]` (Vorlaufzeit) ein. Doppelte Anführungszeichen werden zu einfachen, Zeilenumbrüche zu Leerzeichen.\n- Am Client bricht `shutdown /a` den geplanten Neustart ab.\n- Für einen einmaligen, angekündigten Neustart ohne Laufzeitgrenze passt die Vorlage `neustart-ankuendigen`.\n- Gut als regelmäßiger Job, z. B. täglich zur Mittagszeit.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Wartung",
+  "tags": [
+    "Neustart",
+    "Reboot",
+    "Laufzeit",
+    "Uptime",
+    "shutdown",
+    "Updates"
+  ],
+  "applications": [
+    {
+      "name": "Windows 10/11",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "MAX_TAGE",
+      "description": "Neustart, wenn der PC mindestens so viele Tage ohne Neustart läuft (ab 1).",
+      "default": "14"
+    },
+    {
+      "name": "VORLAUF_MINUTEN",
+      "description": "Minuten zwischen Meldung und Neustart (0 bis 1440). 0 startet sofort neu.",
+      "default": "30"
+    },
+    {
+      "name": "TEXT",
+      "description": "Meldung an den Benutzer, eine Zeile, höchstens 500 Zeichen. [TAGE] wird durch die Laufzeit in Tagen ersetzt, [MINUTEN] durch die Vorlaufzeit. Kein Prozentzeichen verwenden.",
+      "default": "Ihr PC läuft seit [TAGE] Tagen ohne Neustart. Er wird in [MINUTEN] Minuten neu gestartet. Bitte speichern Sie jetzt Ihre Arbeit."
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM). Startet den PC neu, sobald die Laufzeit erreicht ist. Das ist der Zweck des Commands.",
+      "Grenze, Vorlaufzeit und Text stehen als Projektvariablen (NEUSTART_MAX_TAGE, NEUSTART_VORLAUF_MINUTEN, NEUSTART_TEXT) im Command und lassen sich in der Console ändern.",
+      "Startet Server und Domänencontroller nie neu. Wer das dort braucht, entfernt die Prüfung auf ProductType im Skript bewusst."
+    ]
+  },
+  "variables": [
+    {
+      "name": "NEUSTART_MAX_TAGE",
+      "value": "{{MAX_TAGE}}"
+    },
+    {
+      "name": "NEUSTART_VORLAUF_MINUTEN",
+      "value": "{{VORLAUF_MINUTEN}}"
+    },
+    {
+      "name": "NEUSTART_TEXT",
+      "value": "{{TEXT}}"
+    },
+    {
+      "name": "NEUSTART_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Arbeitsplatz und Laufzeit prüfen, Neustart mit Meldung planen",
+      "summary": "Nur Arbeitsplatz-PCs: Laufzeit ≥ NEUSTART_MAX_TAGE → shutdown /r /f /t <Sekunden> /c \"<Text>\"",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in NEUSTART_EXITCODE: 0 kein Neustart nötig, kein Arbeitsplatz-PC oder geplant; 1 shutdown.exe-Fehler; 2 Parameter ungültig.",
+        "BatchLines": [
+          "# Neustart erzwingen, wenn der PC laenger als NEUSTART_MAX_TAGE Tage ohne Neustart laeuft. Laeuft als SYSTEM.",
+          "# Rueckgabe in NEUSTART_EXITCODE: 0 = kein Neustart noetig, kein Arbeitsplatz-PC oder Neustart geplant, 1 = shutdown.exe meldet Fehler, 2 = Parameter ungueltig",
+          "# Keine Prozentzeichen im Code: ACMP ersetzt sie durch Variablen.",
+          "",
+          "function Repariere-Text([string]$s) {",
+          "    # Falls das Skript als UTF-8 geschrieben und als ANSI gelesen wurde: Umlaute zurueckwandeln",
+          "    if ($s -notmatch ('[' + [char]0x00C2 + '-' + [char]0x00F4 + ']')) { return $s }",
+          "    try {",
+          "        $neu = (New-Object System.Text.UTF8Encoding -ArgumentList $false, $true).GetString([Text.Encoding]::Default.GetBytes($s))",
+          "        if ($neu.Length -lt $s.Length) { return $neu }",
+          "    } catch { }",
+          "    return $s",
+          "}",
+          "",
+          "$maxTage = 0",
+          "$minuten = 0",
+          "if (-not [int]::TryParse('%NEUSTART_MAX_TAGE%'.Trim(), [ref]$maxTage) -or $maxTage -lt 1) {",
+          "    Write-Output 'FEHLER: NEUSTART_MAX_TAGE muss eine ganze Zahl ab 1 sein.'",
+          "    exit 2",
+          "}",
+          "if (-not [int]::TryParse('%NEUSTART_VORLAUF_MINUTEN%'.Trim(), [ref]$minuten) -or $minuten -lt 0 -or $minuten -gt 1440) {",
+          "    Write-Output 'FEHLER: NEUSTART_VORLAUF_MINUTEN muss eine ganze Zahl von 0 bis 1440 sein.'",
+          "    exit 2",
+          "}",
+          "$text = @'",
+          "%NEUSTART_TEXT%",
+          "'@",
+          "",
+          "$os = Get-CimInstance -ClassName Win32_OperatingSystem",
+          "# Schutz: nur Arbeitsplaetze (ProductType 1). Server (3) und Domaenencontroller (2) startet die Vorlage nie neu.",
+          "if ($os.ProductType -ne 1) {",
+          "    Write-Output ('Kein Arbeitsplatz-PC (' + $os.Caption + ', ProductType ' + $os.ProductType + '). Server und Domaenencontroller startet diese Vorlage nicht neu.')",
+          "    exit 0",
+          "}",
+          "$letzterStart = $os.LastBootUpTime",
+          "$laufzeit = (Get-Date) - $letzterStart",
+          "$tage = [math]::Floor($laufzeit.TotalDays)",
+          "Write-Output ('Letzter Start ' + $letzterStart.ToString('dd.MM.yyyy HH:mm') + ', Laufzeit ' + $tage + ' Tage, Grenze ' + $maxTage + ' Tage.')",
+          "if ($laufzeit.TotalDays -lt $maxTage) {",
+          "    Write-Output 'Kein Neustart noetig.'",
+          "    exit 0",
+          "}",
+          "",
+          "# Meldung: [TAGE] und [MINUTEN] einsetzen, Zeilenumbrueche und Anfuehrungszeichen entschaerfen, auf 500 Zeichen kuerzen",
+          "$text = (Repariere-Text $text).Trim() -replace '\\s*[\\r\\n]+\\s*', ' '",
+          "$text = $text.Replace('[TAGE]', [string]$tage).Replace('[MINUTEN]', [string]$minuten).Replace('\"', \"'\")",
+          "if ($text.Length -gt 500) { $text = $text.Substring(0, 500) }",
+          "",
+          "$argumente = '/r /f /t ' + ($minuten * 60)",
+          "if ($text) { $argumente += ' /c \"' + $text + '\"' }",
+          "Write-Output ('shutdown.exe ' + $argumente)",
+          "$p = Start-Process -FilePath (Join-Path $env:windir 'System32\\shutdown.exe') -ArgumentList $argumente -Wait -PassThru -WindowStyle Hidden",
+          "if ($p.ExitCode -eq 0) {",
+          "    Write-Output ('Neustart in ' + $minuten + ' Minuten geplant.')",
+          "    exit 0",
+          "}",
+          "if ($p.ExitCode -eq 1190) {",
+          "    Write-Output 'Es ist bereits ein Herunterfahren oder Neustart geplant. Nichts geaendert.'",
+          "    exit 0",
+          "}",
+          "Write-Output ('FEHLER: shutdown.exe meldet Code ' + $p.ExitCode)",
+          "exit 1"
+        ],
+        "ExitCode": "NEUSTART_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn der Neustart nicht geplant werden konnte",
+      "summary": "NEUSTART_EXITCODE ungleich 0",
+      "fields": {
+        "Value_1": "%NEUSTART_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "summary": "Ergebnis: Fehler",
+          "fields": {
+            "Result": "1",
+            "Reason": "Neustart nicht geplant, Code %NEUSTART_EXITCODE% (1 = shutdown.exe-Fehler, 2 = Parameter ungültig)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,157 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "defender-schnellscan",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Defender: Signaturen aktualisieren und Schnellscan",
+  "summary": "Aktualisiert die Signaturen von Microsoft Defender Antivirus und startet einen Schnellscan. Funde stehen kurz im Schritt-Protokoll, der Command endet dann mit Fehler. Ist ein anderer Virenschutz aktiv, endet er ohne Scan.",
+  "description": "### So funktioniert es\n1. `Get-MpComputerStatus` zeigt, ob Defender der aktive Virenschutz ist (Dienst an, Virenschutz an, Modus `Normal`). Im passiven Modus oder ohne Defender endet der Command ohne Scan und nennt den anderen Virenschutz aus dem Windows-Sicherheitscenter.\n2. `Update-MpSignature` holt neue Signaturen über die eingestellte Update-Quelle. Ein Fehler hier ist nur eine Warnung, gescannt wird trotzdem.\n3. `Start-MpScan -ScanType QuickScan` scannt und wartet, bis der Scan fertig ist.\n4. `Get-MpThreatDetection` liefert die Funde seit Beginn des Laufs: Name, betroffene Datei und ob die Aktion erfolgreich war.\n\n### Ergebnis und Exitcodes\n- Exitcode in `DEFENDER_EXITCODE`: `0` kein Fund oder Defender nicht aktiv. `1` Fehler beim Scan. `2` Bedrohung gefunden.\n- Bei `1` und `2` beendet sich der Command mit Fehler. So fallen Funde in der Job-Übersicht auf.\n\n### Hinweise\n- Ein Schnellscan dauert meist wenige Minuten. In dieser Zeit ist die CPU-Last höher.\n- Was mit einem Fund passiert (Quarantäne, Entfernen), regelt die Defender-Richtlinie, nicht dieser Command.\n- Das Windows-Sicherheitscenter (`root/SecurityCenter2`) gibt es nur auf Client-Windows. Auf Servern steht als anderer Virenschutz „unbekannt“.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Sicherheit",
+  "tags": [
+    "Defender",
+    "Virenscan",
+    "Schnellscan",
+    "Signaturen",
+    "Antivirus",
+    "Malware"
+  ],
+  "applications": [
+    {
+      "name": "Microsoft Defender Antivirus",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM). Kein Neustart.",
+      "Für das Signatur-Update braucht der Client Zugriff auf die eingestellte Quelle (Microsoft Update, WSUS oder Dateifreigabe)."
+    ]
+  },
+  "variables": [
+    {
+      "name": "DEFENDER_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Defender prüfen, Signaturen aktualisieren, Schnellscan",
+      "summary": "Get-MpComputerStatus, Update-MpSignature, Start-MpScan -ScanType QuickScan, Funde ausgeben",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in DEFENDER_EXITCODE: 0 kein Fund oder Defender nicht aktiv; 1 Fehler; 2 Bedrohung gefunden.",
+        "BatchLines": [
+          "# Microsoft Defender: Signaturen aktualisieren und Schnellscan ausfuehren. Laeuft als SYSTEM.",
+          "# Rueckgabe in DEFENDER_EXITCODE: 0 = kein Fund oder Defender nicht aktiv (anderer Virenschutz), 1 = Fehler, 2 = Bedrohung gefunden",
+          "",
+          "function Anderer-Virenschutz {",
+          "    $namen = @(Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName 'AntiVirusProduct' -ErrorAction SilentlyContinue |",
+          "        ForEach-Object { [string]$_.displayName } | Where-Object { $_ -and $_ -notmatch 'Defender' })",
+          "    if ($namen.Count -gt 0) { return ($namen -join ', ') }",
+          "    return 'unbekannt'",
+          "}",
+          "",
+          "if (-not (Get-Command -Name 'Get-MpComputerStatus' -ErrorAction SilentlyContinue)) {",
+          "    Write-Output 'Microsoft Defender ist auf diesem System nicht vorhanden. Kein Scan.'",
+          "    exit 0",
+          "}",
+          "try {",
+          "    $status = Get-MpComputerStatus -ErrorAction Stop",
+          "} catch {",
+          "    Write-Output ('Defender antwortet nicht (' + $_.Exception.Message.Trim() + '). Anderer Virenschutz: ' + (Anderer-Virenschutz) + '. Kein Scan.')",
+          "    exit 0",
+          "}",
+          "$modus = [string]$status.AMRunningMode",
+          "Write-Output ('Defender: Modus ' + $modus + ', Virenschutz an: ' + $status.AntivirusEnabled + ', Echtzeitschutz an: ' + $status.RealTimeProtectionEnabled)",
+          "if (-not $status.AMServiceEnabled -or -not $status.AntivirusEnabled -or ($modus -and $modus -ne 'Normal')) {",
+          "    Write-Output ('Defender ist nicht der aktive Virenschutz. Anderer Virenschutz: ' + (Anderer-Virenschutz) + '. Kein Scan.')",
+          "    exit 0",
+          "}",
+          "Write-Output ('Signaturen vorher: ' + $status.AntivirusSignatureVersion + ' vom ' + ('{0:dd.MM.yyyy HH:mm}' -f $status.AntivirusSignatureLastUpdated))",
+          "",
+          "# 1. Signaturen aktualisieren (Fehler ist nur eine Warnung, gescannt wird trotzdem)",
+          "$start = Get-Date",
+          "try {",
+          "    Update-MpSignature -ErrorAction Stop",
+          "    Write-Output 'Signaturen aktualisiert.'",
+          "} catch {",
+          "    Write-Output ('Warnung: Signatur-Update fehlgeschlagen (' + $_.Exception.Message.Trim() + '). Scan mit vorhandenen Signaturen.')",
+          "}",
+          "",
+          "# 2. Schnellscan (wartet, bis der Scan fertig ist)",
+          "try {",
+          "    Start-MpScan -ScanType QuickScan -ErrorAction Stop",
+          "} catch {",
+          "    Write-Output ('FEHLER: Schnellscan fehlgeschlagen: ' + $_.Exception.Message.Trim())",
+          "    exit 1",
+          "}",
+          "$status = Get-MpComputerStatus -ErrorAction SilentlyContinue",
+          "Write-Output ('Schnellscan beendet nach ' + [math]::Round(((Get-Date) - $start).TotalMinutes, 1) + ' Minuten. Signaturen jetzt ' + $status.AntivirusSignatureVersion + '.')",
+          "",
+          "# 3. Funde seit Beginn dieses Laufs",
+          "$funde = @(Get-MpThreatDetection -ErrorAction SilentlyContinue | Where-Object { $_.InitialDetectionTime -ge $start.AddMinutes(-1) })",
+          "if ($funde.Count -eq 0) {",
+          "    Write-Output 'Keine Bedrohung gefunden.'",
+          "    exit 0",
+          "}",
+          "foreach ($f in $funde) {",
+          "    $name = (Get-MpThreat -ThreatID $f.ThreatID -ErrorAction SilentlyContinue | Select-Object -First 1).ThreatName",
+          "    $datei = @($f.Resources) | Select-Object -First 1",
+          "    Write-Output ('Fund: ' + $name + ' | ' + $datei + ' | Aktion erfolgreich: ' + $f.ActionSuccess)",
+          "}",
+          "Write-Output ('FEHLER: ' + $funde.Count + ' Bedrohung(en) gefunden. Details in der Windows-Sicherheit oder im Defender-Portal.')",
+          "exit 2"
+        ],
+        "ExitCode": "DEFENDER_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn der Scan fehlschlug oder etwas fand",
+      "summary": "DEFENDER_EXITCODE ungleich 0",
+      "fields": {
+        "Value_1": "%DEFENDER_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "summary": "Ergebnis: Fehler",
+          "fields": {
+            "Result": "1",
+            "Reason": "Defender-Schnellscan: Code %DEFENDER_EXITCODE% (1 = Fehler, 2 = Bedrohung gefunden). Details im Schritt-Protokoll."
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

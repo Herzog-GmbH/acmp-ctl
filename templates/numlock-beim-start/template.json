@@ -1,0 +1,118 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "numlock-beim-start",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "NumLock beim Start und bei der Anmeldung einschalten",
+  "summary": "Sorgt dafür, dass NumLock am Anmeldebildschirm und nach der Anmeldung eingeschaltet ist. Setzt dazu InitialKeyboardIndicators für den Anmeldebildschirm (.DEFAULT) und bei allen gerade angemeldeten Benutzern.",
+  "description": "## So funktioniert es\nEin PowerShell-Schritt setzt `InitialKeyboardIndicators` = `2` (REG_SZ) unter `Control Panel\\Keyboard`:\n- in `HKEY_USERS\\.DEFAULT` für den Anmeldebildschirm\n- in jedem gerade geladenen Benutzerprofil (Domänen-, lokale und Entra-ID-Konten)\n\nJede Änderung steht mit altem und neuem Wert im Schritt-Protokoll.\n\n## Ergebnis/Exitcodes\n- 0 = alle Profile gesetzt\n- 1 = mindestens ein Profil konnte nicht gesetzt werden (Details im Protokoll)\n\n## Hinweise\n- Benutzer, die gerade nicht angemeldet sind, behalten ihre Einstellung. Den Command bei Bedarf erneut ausführen, etwa beim Anmelden.\n- Neue Benutzerprofile entstehen aus dem Standardbenutzerprofil (`C:\\Users\\Default`). Das ändert der Command nicht.\n- Mit aktiviertem Schnellstart übernimmt Windows manchmal den Zustand vom letzten Herunterfahren. Auch die BIOS/UEFI-Einstellung für NumLock spielt mit.\n- Rückgängig: Wert auf `0` setzen.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Windows-Einstellungen",
+  "tags": [
+    "NumLock",
+    "Tastatur",
+    "Anmeldung",
+    "Registry",
+    "InitialKeyboardIndicators"
+  ],
+  "applications": [
+    {
+      "name": "Windows",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM), weil die Profile anderer Benutzer und .DEFAULT nur so beschreibbar sind. Kein Neustart nötig, die Einstellung greift beim nächsten Start oder bei der nächsten Anmeldung."
+    ]
+  },
+  "variables": [
+    {
+      "name": "NUMLOCK_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "InitialKeyboardIndicators = 2 in .DEFAULT und allen angemeldeten Profilen setzen",
+      "fields": {
+        "BatchLines": [
+          "# NumLock beim Windows-Start und beim Anmelden einschalten",
+          "# Laeuft als SYSTEM. Setzt InitialKeyboardIndicators = 2 (REG_SZ) unter \"Control Panel\\Keyboard\"",
+          "#  - im Profil .DEFAULT (Anmeldebildschirm)",
+          "#  - in allen gerade geladenen Benutzerprofilen (angemeldete Benutzer)",
+          "# Neue oder gerade nicht angemeldete Benutzer behalten ihre Einstellung, bis der Command bei ihnen laeuft.",
+          "# Rueckgabe: 0 erledigt, 1 mindestens ein Profil konnte nicht gesetzt werden.",
+          "$wert = '2'",
+          "$fehler = 0",
+          "$ziele = @('Registry::HKEY_USERS\\.DEFAULT')",
+          "$ziele += @(Get-ChildItem -Path 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue |",
+          "    Where-Object { $_.PSChildName -match '^S-1-(5-21|12-1)-[0-9-]+$' } |",
+          "    ForEach-Object { 'Registry::HKEY_USERS\\' + $_.PSChildName })",
+          "",
+          "foreach ($z in $ziele) {",
+          "    $schluessel = $z + '\\Control Panel\\Keyboard'",
+          "    try {",
+          "        if (-not (Test-Path -LiteralPath $schluessel)) { New-Item -Path $schluessel -Force | Out-Null }",
+          "        $alt = (Get-ItemProperty -LiteralPath $schluessel -Name 'InitialKeyboardIndicators' -ErrorAction SilentlyContinue).InitialKeyboardIndicators",
+          "        New-ItemProperty -LiteralPath $schluessel -Name 'InitialKeyboardIndicators' -PropertyType String -Value $wert -Force | Out-Null",
+          "        [Console]::Out.WriteLine($z.Replace('Registry::HKEY_USERS\\', 'HKU\\') + ': ' + $(if ($null -eq $alt) { '(leer)' } else { $alt }) + ' -> ' + $wert)",
+          "    } catch {",
+          "        $fehler++",
+          "        [Console]::Out.WriteLine($z + ': FEHLER ' + $_.Exception.Message)",
+          "    }",
+          "}",
+          "if ($fehler -gt 0) { exit 1 }",
+          "exit 0"
+        ],
+        "ExitCode": "NUMLOCK_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn nicht alle Profile gesetzt werden konnten",
+      "fields": {
+        "Value_1": "%NUMLOCK_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "NumLock-Einstellung nicht in allen Profilen gesetzt, Details im Schritt-Protokoll"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,145 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "uhrzeit-synchronisieren",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Uhrzeit sofort synchronisieren (W32Time)",
+  "summary": "Prüft den Windows-Zeitdienst, startet ihn bei Bedarf und synchronisiert die Uhrzeit sofort mit der eingestellten Zeitquelle. Hilft bei Anmeldefehlern (Kerberos) und Zertifikatsfehlern durch eine falsche Uhrzeit.",
+  "description": "### So funktioniert es\n1. Fehlt der Dienst W32Time, endet der Command mit Fehler. Ist er deaktiviert, stellt das Skript den Starttyp auf Manuell (Windows-Standard). Läuft er nicht, startet es ihn.\n2. `w32tm /query /source` zeigt die Zeitquelle, z. B. den Domänencontroller.\n3. `w32tm /resync /force` synchronisiert sofort. Schlägt das fehl, folgt nach 5 Sekunden `w32tm /resync /rediscover`. Dabei sucht Windows die Zeitquelle neu.\n4. Zum Schluss stehen die aktuelle Uhrzeit und `w32tm /query /status` im Schritt-Protokoll.\n\n### Ergebnis und Exitcodes\n- Exitcode in `ZEIT_EXITCODE`: `0` synchronisiert. `1` Synchronisierung fehlgeschlagen. `2` Zeitdienst fehlt oder startet nicht.\n- Bei einem Exitcode ungleich 0 beendet sich der Command mit Fehler.\n\n### Hinweise\n- Der Command ändert keine Zeitquelle. Domänenmitglieder holen die Zeit vom Domänencontroller, andere PCs von der eingestellten NTP-Quelle.\n- Häufige Ursachen für `1`: Die Zeitquelle ist nicht erreichbar (UDP 123 gesperrt), oder die Abweichung ist größer, als Windows auf einmal korrigieren darf (MaxPosPhaseCorrection, MaxNegPhaseCorrection).\n- War W32Time absichtlich deaktiviert, etwa weil ein anderer Zeitdienst die Uhr stellt, den Command dort nicht ausführen. Er stellt den Dienst auf Manuell und startet ihn.\n- Virtuelle Maschinen können die Zeit zusätzlich vom Host beziehen und dadurch wieder abweichen.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Wartung",
+  "tags": [
+    "Uhrzeit",
+    "Zeitsynchronisation",
+    "W32Time",
+    "w32tm",
+    "NTP",
+    "Kerberos"
+  ],
+  "applications": [
+    {
+      "name": "Windows-Zeitdienst (W32Time)",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM). Kein Neustart.",
+      "Ändert nur den Starttyp von W32Time, und nur dann, wenn der Dienst deaktiviert war."
+    ]
+  },
+  "variables": [
+    {
+      "name": "ZEIT_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Zeitdienst prüfen und Uhrzeit synchronisieren",
+      "summary": "W32Time starten, w32tm /resync /force (sonst /rediscover), Status ausgeben",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in ZEIT_EXITCODE: 0 synchronisiert; 1 Sync fehlgeschlagen; 2 Zeitdienst fehlt oder startet nicht.",
+        "BatchLines": [
+          "# Windows-Zeitdienst pruefen und die Uhrzeit sofort neu synchronisieren. Laeuft als SYSTEM.",
+          "# Rueckgabe in ZEIT_EXITCODE: 0 = synchronisiert, 1 = Synchronisierung fehlgeschlagen, 2 = Zeitdienst fehlt oder startet nicht",
+          "",
+          "$w32tm = Join-Path $env:windir 'System32\\w32tm.exe'",
+          "$dienst = Get-Service -Name 'W32Time' -ErrorAction SilentlyContinue",
+          "if (-not $dienst) {",
+          "    Write-Output 'FEHLER: Dienst W32Time ist nicht vorhanden.'",
+          "    exit 2",
+          "}",
+          "Write-Output ('Dienst W32Time: ' + $dienst.Status + ', Starttyp ' + $dienst.StartType)",
+          "if ([string]$dienst.StartType -eq 'Disabled') {",
+          "    Set-Service -Name 'W32Time' -StartupType Manual",
+          "    Write-Output 'Starttyp war Deaktiviert und steht jetzt auf Manuell.'",
+          "}",
+          "if ([string]$dienst.Status -ne 'Running') {",
+          "    try {",
+          "        Start-Service -Name 'W32Time' -ErrorAction Stop",
+          "        Start-Sleep -Seconds 3",
+          "        Write-Output 'Dienst W32Time gestartet.'",
+          "    } catch {",
+          "        Write-Output ('FEHLER: Dienst W32Time startet nicht: ' + $_.Exception.Message)",
+          "        exit 2",
+          "    }",
+          "}",
+          "",
+          "function Starte-W32tm([string[]]$argumente) {",
+          "    $script:ausgabe = @(& $w32tm @argumente 2>&1 | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })",
+          "    $script:code = $LASTEXITCODE",
+          "}",
+          "",
+          "Starte-W32tm @('/query', '/source')",
+          "Write-Output ('Zeitquelle: ' + ($ausgabe -join ' '))",
+          "Starte-W32tm @('/resync', '/force')",
+          "if ($code -ne 0) {",
+          "    Write-Output ('Erster Versuch, Code ' + $code + ': ' + ($ausgabe -join ' '))",
+          "    Start-Sleep -Seconds 5",
+          "    Starte-W32tm @('/resync', '/rediscover')",
+          "}",
+          "$ergebnis = $code",
+          "Write-Output ('w32tm /resync: ' + ($ausgabe -join ' '))",
+          "Write-Output ('Uhrzeit jetzt: ' + (Get-Date -Format 'dd.MM.yyyy HH:mm:ss'))",
+          "Starte-W32tm @('/query', '/status')",
+          "$ausgabe | Select-Object -First 10 | ForEach-Object { Write-Output ('  ' + $_) }",
+          "if ($ergebnis -ne 0) {",
+          "    Write-Output ('FEHLER: Synchronisierung fehlgeschlagen, Code ' + $ergebnis)",
+          "    exit 1",
+          "}",
+          "exit 0"
+        ],
+        "ExitCode": "ZEIT_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn die Synchronisierung fehlgeschlagen ist",
+      "summary": "ZEIT_EXITCODE ungleich 0",
+      "fields": {
+        "Value_1": "%ZEIT_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "summary": "Ergebnis: Fehler",
+          "fields": {
+            "Result": "1",
+            "Reason": "Uhrzeit nicht synchronisiert, Code %ZEIT_EXITCODE% (1 = Sync fehlgeschlagen, 2 = Zeitdienst fehlt oder startet nicht)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

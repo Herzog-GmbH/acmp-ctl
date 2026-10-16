@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Herzog-GmbH/acmp-ctl/schema/ctl-template-1.schema.json",
+  "title": "ACMP CTL: Client-Command-Vorlage, Format 1",
+  "description": "Eine Vorlage beschreibt einen ACMP Client Command so, dass ein Mensch ihn prüfen und ein MCP-Server ihn als Entwurf anlegen kann. Die Schritte haben dasselbe Format wie acmp_cc_decode (Ausgabe) und acmp_cc_create_draft (Eingabe).",
+  "type": "object",
+  "required": ["schema", "id", "version", "status", "name", "summary", "author", "license", "updated", "category", "steps"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "schema": { "const": "acmp-ctl/template@1" },
+    "id": {
+      "description": "Eindeutiger Kurzname, nur Kleinbuchstaben, Ziffern und Bindestriche. Entspricht dem Ordnernamen unter templates/.",
+      "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "maxLength": 64
+    },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "status": {
+      "description": "beispiel = zeigt nur das Format, nicht installierbar; entwurf = installierbar, Review offen; geprueft = Review abgeschlossen",
+      "enum": ["beispiel", "entwurf", "geprueft"]
+    },
+    "name": { "type": "string", "minLength": 3, "maxLength": 120 },
+    "summary": { "type": "string", "minLength": 10, "maxLength": 400 },
+    "description": { "description": "Längere Beschreibung, Markdown", "type": "string" },
+    "author": {
+      "type": "object", "required": ["name"], "additionalProperties": false,
+      "properties": { "name": { "type": "string" }, "github": { "type": "string" } }
+    },
+    "license": { "type": "string" },
+    "updated": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "category": {
+      "enum": ["Software", "Sicherheit", "Inventar", "Windows-Einstellungen", "Wartung", "Benutzerhinweise", "Rollout", "Assets", "Werkzeuge", "Baukasten"]
+    },
+    "tags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "applications": {
+      "description": "Anwendungen oder Windows-Komponenten, um die es geht. Damit findet man Vorlagen über die Anwendungssuche.",
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["name"], "additionalProperties": false,
+        "properties": { "name": { "type": "string" }, "vendor": { "type": "string" } }
+      }
+    },
+    "acmp": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "minVersion": { "type": "string" },
+        "exportedWith": { "type": "string" },
+        "scriptFormat": { "description": "Kopfkennung des CLIENTSCRIPT-Formats (13 = aktuell)", "type": "integer" }
+      }
+    },
+    "parameters": {
+      "description": "Werte, die bei der Installation abgefragt werden. Jedes {{NAME}} in Schritten und Variablen wird ersetzt.",
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["name", "description"], "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+          "description": { "type": "string" },
+          "default": { "type": "string" },
+          "required": { "type": "boolean" }
+        }
+      }
+    },
+    "requires": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "customFields": {
+          "type": "array",
+          "items": {
+            "description": "Individuelles Feld, das die Schritte brauchen. Schritte verweisen mit {{CF:<name>:<Eigenschaft>}} darauf (Tablename, Fieldname, FieldID, TableID, StoredCustomFields, StoredTables, StoredFolders); die IDs setzt acmp_lib_install beim Installieren ein.",
+            "type": "object", "required": ["name"], "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string" },
+              "maxLength": { "type": "integer" },
+              "table": { "type": "string" },
+              "folder": { "type": "string" }
+            }
+          }
+        },
+        "globalAccount": {
+          "description": "null oder Beschreibung des benötigten globalen ACMP-Accounts. Die Schritte verwenden dann {{GLOBAL_ACCOUNT_ID}}.",
+          "type": ["string", "null"]
+        },
+        "notes": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "variables": {
+      "description": "Projektvariablen mit Startwert. Variablen, in die ein Schritt schreibt, ergänzt acmp_cc_create_draft selbst.",
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["name"], "additionalProperties": false,
+        "properties": { "name": { "type": "string" }, "value": { "type": "string" } }
+      }
+    },
+    "steps": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/step" } },
+    "files": {
+      "description": "Dateien für das File Repository des Commands (Bereich private). acmp_lib_install lädt jede Datei (url oder path), prüft den SHA-256 und hängt sie an den Entwurf; ein Schritt „Datei herunterladen“ mit private\\<name> bringt sie auf den Client.",
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["name"], "additionalProperties": false,
+        "properties": {
+          "name": { "description": "Dateiname im File Repository, ohne Pfad", "type": "string", "pattern": "^[^\\\\/:*?\"<>|]+$" },
+          "sha256": { "description": "Pflicht außer bei status beispiel (64 Hex-Zeichen, klein). Weicht die geladene Datei ab, wird nichts installiert.", "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+          "size": { "description": "Größe in Byte (nur zur Anzeige und Kontrolle)", "type": "integer", "minimum": 1 },
+          "url": { "description": "Download beim Hersteller, nur https. Entweder url oder path.", "type": ["string", "null"], "format": "uri", "pattern": "^https://" },
+          "path": { "description": "Datei im Repo, relativ zum Vorlagen-Ordner, z. B. files/skript.ps1 (nur Skripte und Textdateien, keine Programme). Entweder url oder path.", "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "step": {
+      "type": "object", "required": ["class"], "additionalProperties": false,
+      "properties": {
+        "class": { "description": "Delphi-Klassenname des Schritts, z. B. TExecuteCommand", "type": "string", "pattern": "^T[A-Za-z0-9]+$" },
+        "description": { "type": "string" },
+        "summary": { "description": "Nur zur Anzeige auf der Webseite. Wird beim Installieren ignoriert.", "type": "string" },
+        "fields": { "description": "Felder wie in acmp_cc_decode. Standardwerte dürfen fehlen.", "type": "object" },
+        "xml": { "description": "Alternativ das komplette Schritt-XML", "type": "string" },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/step" } }
+      }
+    }
+  }
+}

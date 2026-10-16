@@ -1,0 +1,229 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "ntfs-ordner-nur-system",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Ordner anlegen, auf den nur SYSTEM zugreifen darf",
+  "summary": "Legt einen lokalen Ordner an, schaltet die Vererbung ab und gibt nur dem Konto SYSTEM Vollzugriff. SYSTEM wird auch Besitzer. Gedacht für Ablagen, die nur Dienste und ACMP-Skripte lesen sollen, etwa Lizenzdateien oder Zwischenstände.",
+  "description": "## So funktioniert es\n1. Der Zielordner kommt aus dem Parameter `ZIELORDNER` und steht im ersten Schritt. Dort lässt er sich später in der Console ändern.\n2. Ein PowerShell-Schritt prüft den Pfad. Abgelehnt werden Laufwerkswurzeln, Pfade mit `..`, `~`, `/` oder Platzhaltern, Pfade über eine Junction oder einen symbolischen Link, alles im Windows-Ordner und Systemordner wie `C:\\Program Files`, `C:\\ProgramData` oder `C:\\Users` sowie Ordner, die einen davon enthalten.\n3. Der Ordner wird angelegt, falls er fehlt.\n4. „NTFS-Rechte setzen“ schaltet die Vererbung ab, ersetzt alle Einträge und gibt nur SYSTEM Vollzugriff auf Ordner, Unterordner und Dateien.\n5. `icacls /setowner *S-1-5-18 /T /C` macht SYSTEM zum Besitzer aller Einträge.\n\n## Ergebnis/Exitcodes\n- Erfolg: Nur SYSTEM hat Zugriff, auch Administratoren nicht mehr direkt.\n- Pfadprüfung: 2 = Pfad ungültig, 3 = geschützter Ordner oder Verknüpfung. Der Command endet dann mit Fehler, ohne etwas zu ändern.\n- icacls ≠ 0: Der Command endet mit Fehler und nennt den Code.\n\n## Hinweise\n- Bestehende Rechte im Ordner werden überschrieben. Vorher prüfen, ob Benutzer oder Dienste dort schreiben müssen.\n- Administratoren können den Besitz jederzeit zurückholen (`takeown`). Der Schutz verhindert versehentliche Zugriffe, ist aber kein Schutz gegen Administratoren.\n- Der Command ist wiederholbar. Ein zweiter Lauf setzt dieselben Rechte erneut.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Sicherheit",
+  "tags": [
+    "NTFS",
+    "Berechtigungen",
+    "SYSTEM",
+    "icacls",
+    "Ordner",
+    "Vererbung"
+  ],
+  "applications": [
+    {
+      "name": "NTFS-Berechtigungen",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "ZIELORDNER",
+      "description": "Lokaler Ordner ohne Backslash am Ende, z. B. C:\\Daten\\NurSystem. Wird angelegt, falls er fehlt.",
+      "default": "C:\\Daten\\NurSystem",
+      "required": true
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Alle Schritte laufen als Dienst (SYSTEM). Ein angemeldeter Benutzer ist nicht nötig.",
+      "Der Kontoname SYSTEM im Schritt „NTFS-Rechte setzen“ ist auf deutschem und englischem Windows gleich. Auf anderen Sprachen den Eintrag prüfen; der Besitzer-Schritt nutzt die SID und ist sprachunabhängig."
+    ]
+  },
+  "variables": [
+    {
+      "name": "ZIELORDNER",
+      "value": ""
+    },
+    {
+      "name": "PRUEF_EXITCODE",
+      "value": "-1"
+    },
+    {
+      "name": "ICACLS_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TSetProjectVar",
+      "description": "Zielordner festlegen (hier anpassen, ohne Backslash am Ende)",
+      "fields": {
+        "Variable_name": "ZIELORDNER",
+        "Content_list": "",
+        "Content_option": "SingleLine",
+        "Content": "{{ZIELORDNER}}"
+      }
+    },
+    {
+      "class": "TExecutePowerShell",
+      "description": "Zielordner prüfen (keine Laufwerkswurzel, kein Systemordner, keine Verknüpfung)",
+      "fields": {
+        "BatchLines": [
+          "# Zielordner pruefen, bevor die Rechte gesetzt werden.",
+          "# Schutz: keine Laufwerkswurzel, keine Umwege (.., ~, /, Platzhalter), keine Verknuepfung im Pfad,",
+          "# nichts im Windows-Ordner, kein Systemordner und kein Ordner oberhalb davon.",
+          "# Rueckgabe: 0 Ordner ist in Ordnung, 2 Pfad ungueltig, 3 geschuetzter Ordner oder Verknuepfung.",
+          "$ziel = '%ZIELORDNER%'.Trim().TrimEnd('\\')",
+          "if ($ziel -notmatch '^[A-Za-z]:\\\\[^\\\\]') {",
+          "    [Console]::Out.WriteLine('Zielordner ungueltig: \"' + $ziel + '\". Erwartet wird ein lokaler Pfad wie C:\\Daten\\Geheim.')",
+          "    exit 2",
+          "}",
+          "# Nur eindeutige Pfade. Windows deutet .., Kurznamen (~), Schraegstriche sowie Punkte und Leerzeichen am Ende um.",
+          "# Sonst kaemen z. B. C:\\Daten\\..\\Windows oder C:\\Windows. an der Pruefung unten vorbei.",
+          "$teile = $ziel.Substring(3).Split('\\')",
+          "$unsauber = ($ziel.IndexOfAny([char[]]'/*?\"<>|~') -ge 0) -or ($ziel.LastIndexOf(':') -gt 1) -or",
+          "    (@($teile | Where-Object { $_.Trim() -eq '' -or $_ -eq '.' -or $_ -eq '..' -or $_.EndsWith('.') -or $_ -ne $_.Trim() }).Count -gt 0)",
+          "if (-not $unsauber) {",
+          "    try { $unsauber = ([IO.Path]::GetFullPath($ziel).TrimEnd('\\') -ine $ziel) } catch { $unsauber = $true }",
+          "}",
+          "if ($unsauber) {",
+          "    [Console]::Out.WriteLine('Zielordner ungueltig: \"' + $ziel + '\". Erlaubt ist ein einfacher lokaler Pfad ohne .., ~, / und Platzhalter.')",
+          "    exit 2",
+          "}",
+          "$windows = $env:SystemRoot.TrimEnd('\\')",
+          "if ($ziel -ieq $windows -or $ziel.StartsWith($windows + '\\', [StringComparison]::OrdinalIgnoreCase)) {",
+          "    [Console]::Out.WriteLine('Abgelehnt: ' + $ziel + ' liegt im Windows-Ordner.')",
+          "    exit 3",
+          "}",
+          "$geschuetzt = @($env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramData, (Join-Path $env:SystemDrive 'Users')) |",
+          "    Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\\') }",
+          "foreach ($g in $geschuetzt) {",
+          "    if ($ziel -ieq $g -or $g.StartsWith($ziel + '\\', [StringComparison]::OrdinalIgnoreCase)) {",
+          "        [Console]::Out.WriteLine('Abgelehnt: ' + $ziel + ' ist ein Systemordner oder enthaelt einen (' + $g + ').')",
+          "        exit 3",
+          "    }",
+          "}",
+          "# Keine Junction und kein symbolischer Link im Pfad, sonst landen die Rechte an anderer Stelle",
+          "$pruef = $ziel",
+          "while ($pruef.Length -gt 3) {",
+          "    $eintrag = Get-Item -LiteralPath $pruef -Force -ErrorAction SilentlyContinue",
+          "    if ($eintrag) {",
+          "        if ([int]($eintrag.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {",
+          "            [Console]::Out.WriteLine('Abgelehnt: ' + $pruef + ' ist eine Verknuepfung (Junction oder symbolischer Link).')",
+          "            exit 3",
+          "        }",
+          "        if ($pruef -eq $ziel -and -not $eintrag.PSIsContainer) {",
+          "            [Console]::Out.WriteLine('Zielordner ungueltig: ' + $ziel + ' ist eine Datei.')",
+          "            exit 2",
+          "        }",
+          "    }",
+          "    $pruef = Split-Path -Parent $pruef",
+          "}",
+          "[Console]::Out.WriteLine('Zielordner: ' + $ziel)",
+          "exit 0"
+        ],
+        "ExitCode": "PRUEF_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn der Zielordner abgelehnt wurde",
+      "fields": {
+        "Value_1": "%PRUEF_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden, nichts geändert",
+          "fields": {
+            "Result": "1",
+            "Reason": "Zielordner %ZIELORDNER% abgelehnt (Code %PRUEF_EXITCODE%: 2 = ungültig, 3 = geschützter Ordner oder Verknüpfung)"
+          }
+        }
+      ]
+    },
+    {
+      "class": "TMakeDir",
+      "description": "Zielordner anlegen, falls er fehlt",
+      "fields": {
+        "Directory": "%ZIELORDNER%",
+        "Force_directories": "True"
+      }
+    },
+    {
+      "class": "TSetNTFSFolderPermissions",
+      "description": "NTFS-Rechte: Vererbung aus, nur SYSTEM Vollzugriff",
+      "fields": {
+        "SelectedPath": "%ZIELORDNER%",
+        "ChangeInherit": "True",
+        "Inherite": "False",
+        "CopyPermissionsAfterDisableInherite": "False",
+        "OverwritePermissions": "True",
+        "ApplyTo": "atThisFolderSubfoldersAndFiles",
+        "AccessList": [
+          "1111111SYSTEM"
+        ]
+      }
+    },
+    {
+      "class": "TExecuteBatchCommand",
+      "description": "Besitzer auf SYSTEM setzen (icacls /setowner, SID S-1-5-18)",
+      "fields": {
+        "Batchlines": [
+          "icacls \"%ZIELORDNER%\" /setowner *S-1-5-18 /T /C"
+        ],
+        "ExitCode": "ICACLS_EXITCODE",
+        "OutputVar": "",
+        "RunAsDifferentUser": "False",
+        "RunAsUsername": "",
+        "RunAsPassword": "",
+        "RunAsRequestElevatedRights": "False"
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn icacls fehlgeschlagen ist",
+      "fields": {
+        "Value_1": "%ICACLS_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "icacls /setowner fehlgeschlagen, Code %ICACLS_EXITCODE%"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

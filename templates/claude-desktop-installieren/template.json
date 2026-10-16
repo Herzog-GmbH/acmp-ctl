@@ -1,0 +1,447 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "claude-desktop-installieren",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Claude Desktop installieren (für alle Benutzer)",
+  "summary": "Installiert die Desktop-App Claude von Anthropic für alle Benutzer des Rechners. Das aktuelle MSIX-Paket kommt beim Ausführen direkt vom Hersteller, Signatur und Paket werden geprüft. Danach erscheint die App sofort beim angemeldeten Benutzer und aktualisiert sich selbst.",
+  "description": "## So funktioniert es\n1. Ein Fortschrittsfenster informiert den angemeldeten Benutzer.\n2. Als SYSTEM: Windows-Build (ab 18362), Prozessor (x64 oder Arm64) und freien Platz (3 GB) prüfen, das aktuelle MSIX von `claude.ai` laden, Authenticode-Signatur und Paketkennung (Paket `Claude`, Herausgeber Anthropic, PBC) prüfen und mit `Add-AppxProvisionedPackage` für alle Benutzer bereitstellen.\n3. Als angemeldeter Benutzer: App sofort registrieren, damit sie ohne Neuanmeldung im Startmenü steht.\n4. Eine Meldung sagt dem Benutzer, ob Claude bereit ist oder ob er sich einmal neu anmelden muss.\n\n## Ergebnis/Exitcodes\nInstallationsschritt (`SETUP_EXITCODE`):\n- 0 = bereitgestellt\n- 2 = Windows oder Prozessor passt nicht\n- 3 = Download fehlgeschlagen\n- 4 = Paket oder Signatur falsch\n- 5 = Bereitstellung fehlgeschlagen\n- 6 = zu wenig Speicherplatz\n- 1 = sonstiger Fehler\n\nBei jedem Code außer 0 sieht der Benutzer eine Fehlermeldung und der Command endet mit Fehler.\n\nRegistrierung beim Benutzer (`REG_EXITCODE`): 0 = sofort sichtbar, 10 = erscheint nach der nächsten Anmeldung.\n\n## Hinweise\n- Protokoll: `C:\\Windows\\Temp\\acmp-claude-setup.log`, beim Benutzer `%TEMP%\\acmp-claude-register.log`.\n- Der Herausgeber wird exakt verglichen. Wechselt Anthropic das Signaturzertifikat, endet die Installation mit Code 4. Dann `$herausgeber` im Skript an das neue Zertifikat anpassen.\n- Updates installiert die App selbst, solange die Richtlinie `disableAutoUpdates` nicht gesetzt ist.\n- Quelle: Anthropic-Hilfeartikel „Deploy Claude Desktop for Windows“.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Software",
+  "tags": [
+    "Claude",
+    "Anthropic",
+    "KI",
+    "MSIX",
+    "Bereitstellung",
+    "Kiosk"
+  ],
+  "applications": [
+    {
+      "name": "Claude Desktop",
+      "vendor": "Anthropic"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Die Installation läuft als Dienst (SYSTEM), Fortschrittsfenster, Registrierung und Meldungen laufen als angemeldeter Benutzer. Ohne angemeldeten Benutzer wird die App trotzdem bereitgestellt und erscheint bei der nächsten Anmeldung.",
+      "Der Client braucht Internetzugang zu claude.ai und downloads.claude.ai (Weiterleitung auf die aktuelle Version).",
+      "Für die Nutzung braucht jeder Benutzer ein Claude-Konto. Lizenzfragen vor dem Verteilen klären.",
+      "Gut geeignet als Kiosk-Eintrag zur Selbstinstallation."
+    ]
+  },
+  "variables": [
+    {
+      "name": "REG_EXITCODE",
+      "value": "-1"
+    },
+    {
+      "name": "SETUP_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TShowProgressForm",
+      "description": "Fortschrittsfenster zeigen",
+      "fields": {
+        "Ignore_error": "True",
+        "isSystem": "False"
+      }
+    },
+    {
+      "class": "TSetProgressFormProperties",
+      "description": "Fortschritt: Claude wird geladen",
+      "fields": {
+        "Ignore_error": "True",
+        "isSystem": "False",
+        "Line1": "Claude wird heruntergeladen und installiert …",
+        "Line2": "Das dauert meist ein bis zwei Minuten.",
+        "Image_file": "",
+        "Form_caption": "Claude wird installiert",
+        "Image_string": "",
+        "Transparent": "False",
+        "Value_progressbar": "30",
+        "Update_line1": "True",
+        "Update_line2": "True",
+        "Update_Caption": "True",
+        "Image_type": "0"
+      }
+    },
+    {
+      "class": "TExecutePowerShell",
+      "description": "Claude für alle Benutzer bereitstellen (als SYSTEM)",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Lädt das aktuelle MSIX beim Hersteller, prüft Signatur und Paket und stellt es mit Add-AppxProvisionedPackage bereit. Rückgabe in SETUP_EXITCODE.",
+        "BatchLines": [
+          "# Claude Desktop fuer alle Benutzer installieren (MSIX, Bereitstellung fuer alle Benutzer des Rechners)",
+          "#",
+          "# Laeuft als SYSTEM ueber ACMP (64-Bit-PowerShell).",
+          "# Hinweis: keine Prozentzeichen verwenden, ACMP ersetzt sie durch Variablen.",
+          "#",
+          "# Ablauf:",
+          "#  1. Windows-Version, Prozessor und freien Platz pruefen",
+          "#  2. aktuelles MSIX direkt bei Anthropic laden (offizielle Adresse fuer Unternehmensinstallationen)",
+          "#  3. Signatur und Paketkennung pruefen (Paket Claude, Herausgeber Anthropic, PBC)",
+          "#  4. mit Add-AppxProvisionedPackage fuer alle Benutzer bereitstellen",
+          "#  5. Bereitstellung pruefen, Download loeschen",
+          "# Updates holt sich die App danach selbst, sofern die Richtlinie disableAutoUpdates nicht gesetzt ist.",
+          "#",
+          "# Rueckgabe: 0 fertig, 2 Windows oder Prozessor passt nicht, 3 Download fehlgeschlagen,",
+          "#            4 Paket oder Signatur falsch, 5 Bereitstellung fehlgeschlagen, 6 zu wenig Speicherplatz,",
+          "#            1 sonstiger Fehler.",
+          "# Protokoll: C:\\Windows\\Temp\\acmp-claude-setup.log",
+          "# Quelle: https://support.claude.com/en/articles/12622703-deploy-claude-desktop-for-windows",
+          "",
+          "$appName     = 'Claude'",
+          "$paketName   = 'Claude'",
+          "$herausgeber = 'CN=\"Anthropic, PBC\", O=\"Anthropic, PBC\", L=San Francisco, S=California, C=US, SERIALNUMBER=4860621, OID.2.5.4.15=Private Organization, OID.1.3.6.1.4.1.311.60.2.1.2=Delaware, OID.1.3.6.1.4.1.311.60.2.1.3=US'",
+          "$urlX64      = 'https://claude.ai/api/desktop/win32/x64/msix/latest/redirect'",
+          "$urlArm64    = 'https://claude.ai/api/desktop/win32/arm64/msix/latest/redirect'",
+          "$minBuild    = 18362",
+          "$minFreiGB   = 3",
+          "$nurPruefen  = $false   # true = laden und pruefen, aber nichts installieren",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "$ProgressPreference    = 'SilentlyContinue'",
+          "$logDatei  = Join-Path $env:windir 'Temp\\acmp-claude-setup.log'",
+          "$arbeit    = Join-Path $env:windir 'Temp\\acmp-claude-msix'",
+          "if ($nurPruefen) {",
+          "    $logDatei = Join-Path $env:TEMP 'acmp-claude-setup-probe.log'",
+          "    $arbeit   = Join-Path $env:TEMP 'acmp-claude-msix-probe'",
+          "}",
+          "",
+          "function Schreibe([string]$text) {",
+          "    [Console]::Out.WriteLine($text)",
+          "    try { Add-Content -LiteralPath $logDatei -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $text) -Encoding UTF8 } catch { }",
+          "}",
+          "function Aufraeumen {",
+          "    if (Test-Path -LiteralPath $arbeit) { Remove-Item -LiteralPath $arbeit -Recurse -Force -ErrorAction SilentlyContinue }",
+          "}",
+          "function Abbruch([int]$code, [string]$text) {",
+          "    Schreibe ('FEHLER ' + $code + ': ' + $text)",
+          "    Aufraeumen",
+          "    exit $code",
+          "}",
+          "trap { Schreibe ('FEHLER 1: ' + $_.Exception.Message); Aufraeumen; exit 1 }",
+          "",
+          "Schreibe ('Start auf ' + $env:COMPUTERNAME + ($(if ($nurPruefen) { ' (nur pruefen)' } else { '' })))",
+          "",
+          "# 1. Windows, Prozessor, Speicherplatz",
+          "$build = [int](Get-CimInstance -ClassName Win32_OperatingSystem).BuildNumber",
+          "if ($build -lt $minBuild) { Abbruch 2 ('Windows-Build ' + $build + ' ist zu alt, noetig ist mindestens ' + $minBuild + '.') }",
+          "switch ($env:PROCESSOR_ARCHITECTURE) {",
+          "    'AMD64' { $url = $urlX64 }",
+          "    'ARM64' { $url = $urlArm64 }",
+          "    default { Abbruch 2 ('Prozessor ' + $env:PROCESSOR_ARCHITECTURE + ' wird nicht unterstuetzt (nur 64-Bit-PowerShell auf x64 oder Arm64).') }",
+          "}",
+          "$laufwerk = New-Object System.IO.DriveInfo ($env:SystemDrive)",
+          "$freiGB = [math]::Round($laufwerk.AvailableFreeSpace / 1GB, 1)",
+          "if ($freiGB -lt $minFreiGB) { Abbruch 6 ('Nur ' + $freiGB + ' GB frei auf ' + $env:SystemDrive + ', noetig sind ' + $minFreiGB + ' GB.') }",
+          "Schreibe ('Windows-Build ' + $build + ', ' + $env:PROCESSOR_ARCHITECTURE + ', ' + $freiGB + ' GB frei')",
+          "",
+          "# 2. Download",
+          "Aufraeumen",
+          "New-Item -ItemType Directory -Path $arbeit -Force | Out-Null",
+          "$datei = Join-Path $arbeit ($appName + '.msix')",
+          "[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12",
+          "$uhr = [Diagnostics.Stopwatch]::StartNew()",
+          "try {",
+          "    $wc = New-Object System.Net.WebClient",
+          "    $wc.Headers.Add('User-Agent', 'ACMP-Client-Command/1.0')",
+          "    $wc.DownloadFile($url, $datei)",
+          "    $wc.Dispose()",
+          "} catch {",
+          "    Abbruch 3 ('Download von ' + $url + ' fehlgeschlagen: ' + $_.Exception.Message)",
+          "}",
+          "$mb = [math]::Round((Get-Item -LiteralPath $datei).Length / 1MB, 1)",
+          "Schreibe ('Geladen: ' + $mb + ' MB in ' + [math]::Round($uhr.Elapsed.TotalSeconds) + ' s von ' + $url)",
+          "",
+          "# 3. Signatur und Paketkennung",
+          "$sig = Get-AuthenticodeSignature -LiteralPath $datei",
+          "if ($sig.Status -ne 'Valid') { Abbruch 4 ('Signatur ungueltig: ' + $sig.Status + ' ' + $sig.StatusMessage) }",
+          "if ($sig.SignerCertificate.Subject -ne $herausgeber) { Abbruch 4 ('Unerwarteter Signierer: ' + $sig.SignerCertificate.Subject) }",
+          "Add-Type -AssemblyName System.IO.Compression.FileSystem",
+          "$zip = [IO.Compression.ZipFile]::OpenRead($datei)",
+          "try {",
+          "    $eintrag = $zip.GetEntry('AppxManifest.xml')",
+          "    if (-not $eintrag) { Abbruch 4 'AppxManifest.xml fehlt im Paket.' }",
+          "    $leser = New-Object System.IO.StreamReader ($eintrag.Open())",
+          "    $manifest = [xml]$leser.ReadToEnd()",
+          "    $leser.Dispose()",
+          "} finally { $zip.Dispose() }",
+          "$kennung = $manifest.Package.Identity",
+          "if ($kennung.Name -ne $paketName -or $kennung.Publisher -ne $herausgeber) { Abbruch 4 ('Falsches Paket: ' + $kennung.Name + ' / ' + $kennung.Publisher) }",
+          "$version = $kennung.Version",
+          "Schreibe ('Paket ' + $kennung.Name + ' ' + $version + ' (' + $kennung.ProcessorArchitecture + '), Signatur gueltig')",
+          "",
+          "# 4. Fuer alle Benutzer bereitstellen",
+          "if ($nurPruefen) {",
+          "    Schreibe ('Probe: ' + $datei + ' wuerde jetzt fuer alle Benutzer bereitgestellt.')",
+          "    Aufraeumen",
+          "    exit 0",
+          "}",
+          "try {",
+          "    Add-AppxProvisionedPackage -Online -PackagePath $datei -SkipLicense -Regions 'all' | Out-Null",
+          "} catch {",
+          "    Abbruch 5 ('Add-AppxProvisionedPackage: ' + $_.Exception.Message)",
+          "}",
+          "",
+          "# 5. Pruefen und aufraeumen",
+          "$bereit = @(Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $paketName -and [version]$_.Version -ge [version]$version })",
+          "if ($bereit.Count -eq 0) { Abbruch 5 ('Nach der Bereitstellung fehlt ' + $paketName + ' ' + $version + ' in der Liste.') }",
+          "Schreibe ('Bereitgestellt: ' + $bereit[0].PackageName)",
+          "Aufraeumen",
+          "Schreibe 'Fertig.'",
+          "exit 0"
+        ],
+        "ExitCode": "SETUP_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn die Bereitstellung geklappt hat",
+      "fields": {
+        "Value_1": "%SETUP_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "=",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TSetProgressFormProperties",
+          "description": "Fortschritt: wird eingerichtet",
+          "fields": {
+            "Ignore_error": "True",
+            "isSystem": "False",
+            "Line1": "Claude wird für Sie eingerichtet …",
+            "Line2": "",
+            "Image_file": "",
+            "Form_caption": "Claude wird installiert",
+            "Image_string": "",
+            "Transparent": "False",
+            "Value_progressbar": "80",
+            "Update_line1": "True",
+            "Update_line2": "True",
+            "Update_Caption": "True",
+            "Image_type": "0"
+          }
+        },
+        {
+          "class": "TExecutePowerShell",
+          "description": "Claude beim angemeldeten Benutzer registrieren (als Benutzer)",
+          "fields": {
+            "_CommandComment": "Läuft als angemeldeter Benutzer. Macht die bereitgestellte App sofort sichtbar. Rückgabe in REG_EXITCODE (0 sichtbar, 10 erst nach Neuanmeldung).",
+            "isSystem": "False",
+            "BatchLines": [
+              "# Claude fuer den angemeldeten Benutzer sofort sichtbar machen",
+              "# Laeuft als angemeldeter Benutzer (ACMP \"Ausfuehren als: Benutzer\"), direkt nach der Bereitstellung als SYSTEM.",
+              "# Ohne diesen Schritt erscheint die App erst nach dem naechsten Anmelden im Startmenue.",
+              "# Hinweis: keine Prozentzeichen verwenden, ACMP ersetzt sie durch Variablen.",
+              "#",
+              "# Rueckgabe: 0 App ist beim Benutzer registriert, 10 noch nicht (Benutzer muss sich ab- und wieder anmelden).",
+              "# Protokoll: TEMP-Ordner des Benutzers, acmp-claude-register.log",
+              "",
+              "$paketName = 'Claude'",
+              "$familie   = 'Claude_pzs8sxrjxfjjc'",
+              "",
+              "$logDatei = Join-Path $env:TEMP 'acmp-claude-register.log'",
+              "function Schreibe([string]$text) {",
+              "    [Console]::Out.WriteLine($text)",
+              "    try { Add-Content -LiteralPath $logDatei -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $text) -Encoding UTF8 } catch { }",
+              "}",
+              "",
+              "Schreibe ('Start fuer ' + $env:USERDOMAIN + '\\' + $env:USERNAME)",
+              "# Schon vorhanden: nichts tun (eine laufende App nicht anfassen, Updates holt sie sich selbst)",
+              "$app = Get-AppxPackage -Name $paketName -ErrorAction SilentlyContinue | Select-Object -First 1",
+              "if ($app) { Schreibe ('Schon beim Benutzer vorhanden: ' + $app.PackageFullName); exit 0 }",
+              "",
+              "try {",
+              "    Add-AppxPackage -RegisterByFamilyName -MainPackage $familie -ErrorAction Stop",
+              "    Schreibe ('Registriert: ' + $familie)",
+              "} catch {",
+              "    Schreibe ('Registrieren nicht moeglich: ' + $_.Exception.Message)",
+              "}",
+              "$app = Get-AppxPackage -Name $paketName -ErrorAction SilentlyContinue | Sort-Object { [version]$_.Version } -Descending | Select-Object -First 1",
+              "if ($app) {",
+              "    Schreibe ('Beim Benutzer vorhanden: ' + $app.PackageFullName)",
+              "    exit 0",
+              "}",
+              "Schreibe 'Noch nicht beim Benutzer vorhanden, erscheint nach dem naechsten Anmelden.'",
+              "exit 10"
+            ],
+            "ExitCode": "REG_EXITCODE",
+            "OutputLines": "",
+            "ShowConsole": "False",
+            "Use64Bit": "True",
+            "RunAsGlobalAccount": "False",
+            "RunAsDifferentUser": "False",
+            "RunAsRequestElevatedRights": "False",
+            "RunAsGlobalAccountId": "",
+            "RunAsUsername": "",
+            "RunAsPassword": ""
+          }
+        }
+      ]
+    },
+    {
+      "class": "THideProgressForm",
+      "description": "Fortschrittsfenster schließen",
+      "fields": {
+        "Ignore_error": "True",
+        "isSystem": "False"
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn die Installation fehlgeschlagen ist",
+      "fields": {
+        "Value_1": "%SETUP_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TMessageDialog",
+          "description": "Fehlermeldung an den Benutzer",
+          "fields": {
+            "isSystem": "False",
+            "Title": "Claude",
+            "Message_text": "Claude konnte nicht installiert werden (Code %SETUP_EXITCODE%).\r\n\r\n3 = Download fehlgeschlagen (Internetverbindung prüfen)\r\n6 = zu wenig freier Speicherplatz auf dem Systemlaufwerk\r\n\r\nBitte melden Sie sich bei der IT.\r\nProtokoll: C:\\Windows\\Temp\\acmp-claude-setup.log",
+            "Prompt": "",
+            "Default_value": "",
+            "Variable_name": "",
+            "Suggestions": "",
+            "MessageboxType": "1",
+            "VisibleButtons": "1",
+            "FailButtons": "0",
+            "DenyManualInput": "False",
+            "Automatic_close": "False",
+            "Auto_close_after": "0",
+            "ResultAfterTimeOut": "16",
+            "DialogType": "0",
+            "Button_yes_caption": "Ja",
+            "Button_no_caption": "Nein",
+            "Button_cancel_caption": "Abbrechen",
+            "Button_ok_caption": "OK",
+            "Display_style": "0"
+          }
+        },
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "Installation fehlgeschlagen, Code %SETUP_EXITCODE%, Protokoll C:\\Windows\\Temp\\acmp-claude-setup.log"
+          }
+        }
+      ]
+    },
+    {
+      "class": "TActionElse",
+      "description": "Sonst",
+      "fields": {},
+      "children": [
+        {
+          "class": "TActionIf",
+          "description": "Wenn die App schon sichtbar ist",
+          "fields": {
+            "Value_1": "%REG_EXITCODE%",
+            "Value_2": "0",
+            "Operator": "=",
+            "CaseSensitive": "False",
+            "DigitsAsNumbers": "False"
+          },
+          "children": [
+            {
+              "class": "TMessageDialog",
+              "description": "Hinweis: installiert",
+              "fields": {
+                "isSystem": "False",
+                "Title": "Claude",
+                "Message_text": "Claude ist installiert.\r\n\r\nSie finden Claude im Startmenü. Beim ersten Start melden Sie sich mit Ihrem Konto an.\r\nUpdates installiert Claude danach selbst.",
+                "Prompt": "",
+                "Default_value": "",
+                "Variable_name": "",
+                "Suggestions": "",
+                "MessageboxType": "2",
+                "VisibleButtons": "1",
+                "FailButtons": "0",
+                "DenyManualInput": "False",
+                "Automatic_close": "False",
+                "Auto_close_after": "0",
+                "ResultAfterTimeOut": "16",
+                "DialogType": "0",
+                "Button_yes_caption": "Ja",
+                "Button_no_caption": "Nein",
+                "Button_cancel_caption": "Abbrechen",
+                "Button_ok_caption": "OK",
+                "Display_style": "0"
+              }
+            }
+          ]
+        },
+        {
+          "class": "TActionElse",
+          "description": "Sonst",
+          "fields": {},
+          "children": [
+            {
+              "class": "TMessageDialog",
+              "description": "Hinweis: ab- und wieder anmelden",
+              "fields": {
+                "isSystem": "False",
+                "Title": "Claude",
+                "Message_text": "Claude ist installiert.\r\n\r\nBitte melden Sie sich einmal ab und wieder an. Danach finden Sie Claude im Startmenü.\r\nBeim ersten Start melden Sie sich mit Ihrem Konto an.",
+                "Prompt": "",
+                "Default_value": "",
+                "Variable_name": "",
+                "Suggestions": "",
+                "MessageboxType": "2",
+                "VisibleButtons": "1",
+                "FailButtons": "0",
+                "DenyManualInput": "False",
+                "Automatic_close": "False",
+                "Auto_close_after": "0",
+                "ResultAfterTimeOut": "16",
+                "DialogType": "0",
+                "Button_yes_caption": "Ja",
+                "Button_no_caption": "Nein",
+                "Button_cancel_caption": "Abbrechen",
+                "Button_ok_caption": "OK",
+                "Display_style": "0"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,151 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "edge-profil-zuruecksetzen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Edge-Profil des Benutzers zurücksetzen",
+  "summary": "Setzt Microsoft Edge für den angemeldeten Benutzer auf ein leeres Profil zurück. Edge wird beendet, der Ordner „User Data“ wird gesichert (umbenannt) oder gelöscht. Hilft bei defekten Profilen, hängenden Erweiterungen oder kaputten Einstellungen.",
+  "description": "## So funktioniert es\n1. Läuft als angemeldeter Benutzer und arbeitet in dessen `%LOCALAPPDATA%\\Microsoft\\Edge\\User Data`.\n2. Beendet alle Edge-Prozesse in der Sitzung des Benutzers, auch Hintergrundprozesse.\n3. Bei `SICHERN` = ja wird der Ordner in `User Data.alt-<Datum-Uhrzeit>` umbenannt, sonst gelöscht. Bei gesperrten Dateien gibt es bis zu drei Versuche.\n4. Beim nächsten Start legt Edge ein neues Profil an.\n\n## Ergebnis/Exitcodes\n- 0 = zurückgesetzt, oder es gab kein Profil\n- 3 = Ordner ist gesperrt und blieb erhalten\n- 1 = sonstiger Fehler\n\nBei 1 oder 3 endet der Command mit Fehler.\n\n## Hinweise\n- Edge wird ohne Rückfrage geschlossen. Offene Tabs sind danach weg, wenn sie nicht wiederhergestellt werden.\n- Lokal gespeicherte Favoriten, Kennwörter und Verläufe sind im neuen Profil nicht mehr da. Mit Edge-Synchronisierung kommen sie nach der Anmeldung zurück, sonst aus dem gesicherten Ordner.\n- Gesicherte Ordner bleiben liegen und brauchen Platz. Bei Bedarf später löschen.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Wartung",
+  "tags": [
+    "Edge",
+    "Browser",
+    "Profil",
+    "Zurücksetzen",
+    "Benutzerprofil",
+    "Fehlerbehebung"
+  ],
+  "applications": [
+    {
+      "name": "Microsoft Edge",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "SICHERN",
+      "description": "ja = Profilordner umbenennen und behalten, nein = Profilordner löschen",
+      "default": "ja",
+      "required": true
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als angemeldeter Benutzer (Ausführen als: Benutzer). Ohne angemeldeten Benutzer kann der Schritt nicht laufen.",
+      "Gilt nur für den Benutzer, der gerade angemeldet ist. Andere Profile auf dem Rechner bleiben unverändert."
+    ]
+  },
+  "variables": [
+    {
+      "name": "EDGE_SICHERN",
+      "value": "{{SICHERN}}"
+    },
+    {
+      "name": "EDGE_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Edge beenden und Profilordner sichern oder löschen (als Benutzer)",
+      "fields": {
+        "isSystem": "False",
+        "BatchLines": [
+          "# Edge-Profil des angemeldeten Benutzers zuruecksetzen",
+          "# Laeuft als angemeldeter Benutzer (ACMP \"Ausfuehren als: Benutzer\").",
+          "# Beendet Edge in der Sitzung des Benutzers und benennt den Ordner \"User Data\" um (Sicherung)",
+          "# oder loescht ihn. Beim naechsten Start legt Edge ein neues, leeres Profil an.",
+          "# Rueckgabe: 0 erledigt oder kein Profil vorhanden, 3 Ordner ist gesperrt und blieb erhalten, 1 sonstiger Fehler.",
+          "$sichern = @('ja', 'j', 'yes', '1', 'true') -contains '%EDGE_SICHERN%'.Trim().ToLower()",
+          "$profilOrdner = Join-Path $env:LOCALAPPDATA 'Microsoft\\Edge\\User Data'",
+          "",
+          "[Console]::Out.WriteLine('Benutzer: ' + $env:USERDOMAIN + '\\' + $env:USERNAME)",
+          "if (-not (Test-Path -LiteralPath $profilOrdner)) {",
+          "    [Console]::Out.WriteLine('Kein Edge-Profil vorhanden (' + $profilOrdner + '), nichts zu tun.')",
+          "    exit 0",
+          "}",
+          "",
+          "# Edge nur in der eigenen Sitzung beenden (auch Hintergrundprozesse wie den Startboost)",
+          "$sitzung = (Get-Process -Id $PID).SessionId",
+          "for ($runde = 1; $runde -le 3; $runde++) {",
+          "    $edge = @(Get-Process -Name 'msedge' -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $sitzung })",
+          "    if ($edge.Count -eq 0) { break }",
+          "    [Console]::Out.WriteLine('Beende Edge (' + $edge.Count + ' Prozesse)')",
+          "    $edge | Stop-Process -Force -ErrorAction SilentlyContinue",
+          "    Start-Sleep -Seconds 3",
+          "}",
+          "",
+          "$erledigt = $false",
+          "for ($versuch = 1; $versuch -le 3 -and -not $erledigt; $versuch++) {",
+          "    try {",
+          "        if ($sichern) {",
+          "            $neuerName = 'User Data.alt-' + (Get-Date -Format 'yyyyMMdd-HHmmss')",
+          "            Rename-Item -LiteralPath $profilOrdner -NewName $neuerName -ErrorAction Stop",
+          "            [Console]::Out.WriteLine('Profil gesichert als ' + (Join-Path (Split-Path $profilOrdner -Parent) $neuerName))",
+          "        } else {",
+          "            Remove-Item -LiteralPath $profilOrdner -Recurse -Force -ErrorAction Stop",
+          "            [Console]::Out.WriteLine('Profil geloescht: ' + $profilOrdner)",
+          "        }",
+          "        $erledigt = $true",
+          "    } catch {",
+          "        [Console]::Out.WriteLine('Versuch ' + $versuch + ': ' + $_.Exception.Message)",
+          "        Start-Sleep -Seconds 5",
+          "    }",
+          "}",
+          "if (-not $erledigt -or (Test-Path -LiteralPath $profilOrdner)) {",
+          "    [Console]::Out.WriteLine('Der Profilordner ist noch vorhanden (Datei gesperrt?). Edge schliessen und erneut ausfuehren.')",
+          "    exit 3",
+          "}",
+          "exit 0"
+        ],
+        "ExitCode": "EDGE_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn das Profil nicht zurückgesetzt werden konnte",
+      "fields": {
+        "Value_1": "%EDGE_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "Edge-Profil nicht zurückgesetzt, Code %EDGE_EXITCODE% (3 = Ordner gesperrt, 1 = sonstiger Fehler)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

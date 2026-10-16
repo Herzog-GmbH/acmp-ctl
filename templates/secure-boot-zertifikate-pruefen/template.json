@@ -1,0 +1,171 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "secure-boot-zertifikate-pruefen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Secure Boot und Zertifikate 2023 prüfen",
+  "summary": "Prüft, ob Secure Boot an ist und ob die neuen Microsoft-Zertifikate „Windows UEFI CA 2023“ (db) und „Microsoft Corporation KEK 2K CA 2023“ (KEK) in der Firmware stehen. Das Ergebnis steht kurz im Feld „SecureBootStatus“, z. B. SecureBoot=An; UEFI-CA-2023=ja; KEK-2023=ja.",
+  "description": "### Warum\nDie Secure-Boot-Zertifikate von Microsoft aus dem Jahr 2011 laufen ab Juni 2026 aus: „Microsoft Corporation KEK CA 2011“ und „Microsoft UEFI CA 2011“ im Juni, „Microsoft Windows Production PCA 2011“ im Oktober 2026. Geräte ohne die Nachfolger von 2023 bekommen danach keine neuen Boot-Manager und keine neuen Sperrlisten mehr. Mit dieser Vorlage seht ihr je Client, wo der Tausch noch fehlt.\n\n### So funktioniert es\n1. `Confirm-SecureBootUEFI` meldet, ob Secure Boot an ist. Auf Legacy-BIOS und VMs ohne UEFI fängt das Skript den Fehler ab.\n2. `Get-SecureBootUEFI` liest die Firmware-Variablen `db` und `KEK`. Das Skript sucht darin die Namen der Zertifikate von 2023.\n3. Hat Windows den Tausch schon begonnen, hängt das Skript den Stand aus der Registry an (`HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\Servicing`, Wert `UEFICA2023Status`).\n4. Der zweite Schritt speichert den Text im Feld „SecureBootStatus“.\n\n### Ergebnis und Exitcodes\n- `SecureBoot=An; UEFI-CA-2023=ja; KEK-2023=ja; Update=Updated`: Zertifikate von 2023 sind da.\n- `SecureBoot=An; UEFI-CA-2023=nein; KEK-2023=nein`: Zertifikate fehlen, der Tausch steht noch aus.\n- `SecureBoot=Aus; …`: UEFI ohne Secure Boot. Die Zertifikate prüft das Skript trotzdem.\n- `SecureBoot=kein UEFI (BIOS)`: Legacy-BIOS oder VM der Generation 1. Hier gibt es keine Zertifikate.\n- `unbekannt`: Der Wert war nicht lesbar, z. B. weil die VM die Variable nicht bereitstellt.\n- Exitcode `0` = geprüft, `1` = mindestens ein Wert `unbekannt`. Er steht in der Variable `SECUREBOOT_STATUS_EXIT`.\n\n### Hinweise\n- `Update=` erscheint nur, wenn Windows den Tausch schon angefangen hat, z. B. `InProgress` oder `Updated`.\n- Für eine Abfrage reicht: Feld „SecureBootStatus“ enthält `UEFI-CA-2023=nein`.\n- Die Vorlage prüft nur. Den Tausch selbst steuert ihr nach der Anleitung von Microsoft bzw. über Windows Update.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Sicherheit",
+  "tags": [
+    "Secure Boot",
+    "UEFI",
+    "Zertifikate",
+    "Windows UEFI CA 2023",
+    "KEK",
+    "Audit",
+    "individuelles Feld"
+  ],
+  "applications": [
+    {
+      "name": "UEFI Secure Boot",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [
+      {
+        "name": "SecureBootStatus",
+        "type": "Text",
+        "maxLength": 100,
+        "table": "Attribute",
+        "folder": "Client Info"
+      }
+    ],
+    "globalAccount": null,
+    "notes": [
+      "Das individuelle Feld „SecureBootStatus“ (Text, 100 Zeichen) muss vor der Installation unter Client Info → Attribute existieren. Bezeichnung DE und EN genau „SecureBootStatus“, ohne Leerzeichen. Feld- und Tabellen-IDs setzt die Installation ein.",
+      "Läuft als Dienst (SYSTEM) und liest nur. Die Secure-Boot-Cmdlets brauchen Administratorrechte.",
+      "Ändert keine Firmware-Variablen und stößt keinen Zertifikatstausch an.",
+      "Windows PowerShell 5.1 (64 Bit) mit dem Modul SecureBoot (ab Windows 8 bzw. Server 2012 vorhanden)."
+    ]
+  },
+  "variables": [
+    {
+      "name": "SECUREBOOT_STATUS",
+      "value": ""
+    },
+    {
+      "name": "SECUREBOOT_STATUS_EXIT",
+      "value": ""
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Secure Boot und Zertifikate 2023 in db und KEK prüfen",
+      "fields": {
+        "BatchLines": [
+          "# Secure Boot und die Microsoft-Zertifikate von 2023 prüfen",
+          "#   db : Windows UEFI CA 2023 (Nachfolger von Microsoft Windows Production PCA 2011)",
+          "#   KEK: Microsoft Corporation KEK 2K CA 2023 (Nachfolger von Microsoft Corporation KEK CA 2011)",
+          "# Ausgabe z. B.: SecureBoot=An; UEFI-CA-2023=ja; KEK-2023=ja; Update=Updated",
+          "# Exitcode: 0 = geprüft (auch Legacy-BIOS), 1 = mindestens ein Wert war nicht lesbar",
+          "$max = 100",
+          "$exitCode = 0",
+          "$teile = @()",
+          "$uefi = $true",
+          "try {",
+          "    if (Confirm-SecureBootUEFI -ErrorAction Stop) { $teile += 'SecureBoot=An' } else { $teile += 'SecureBoot=Aus' }",
+          "}",
+          "catch [System.PlatformNotSupportedException] {",
+          "    # Legacy-BIOS oder VM ohne UEFI (z. B. Hyper-V Generation 1)",
+          "    $uefi = $false",
+          "    $teile += 'SecureBoot=kein UEFI (BIOS)'",
+          "}",
+          "catch {",
+          "    if ($_.Exception.Message -match 'C0000002|not supported|nicht unterst') {",
+          "        $uefi = $false",
+          "        $teile += 'SecureBoot=kein UEFI (BIOS)'",
+          "    }",
+          "    else {",
+          "        $exitCode = 1",
+          "        $teile += 'SecureBoot=unbekannt'",
+          "    }",
+          "}",
+          "function Test-UefiZertifikat([string]$variable, [string]$muster) {",
+          "    try {",
+          "        $wert = Get-SecureBootUEFI -Name $variable -ErrorAction Stop",
+          "        if ($null -eq $wert -or $null -eq $wert.Bytes) { return 'unbekannt' }",
+          "        if ([System.Text.Encoding]::ASCII.GetString($wert.Bytes) -match $muster) { return 'ja' }",
+          "        return 'nein'",
+          "    }",
+          "    catch { return 'unbekannt' }",
+          "}",
+          "if ($uefi) {",
+          "    $db = Test-UefiZertifikat 'db' 'Windows UEFI CA 2023'",
+          "    $kek = Test-UefiZertifikat 'KEK' 'Microsoft Corporation KEK 2K CA 2023'",
+          "    if ($db -eq 'unbekannt' -or $kek -eq 'unbekannt') { $exitCode = 1 }",
+          "    $teile += 'UEFI-CA-2023=' + $db",
+          "    $teile += 'KEK-2023=' + $kek",
+          "    # Stand des Zertifikatstauschs durch Windows, falls Windows ihn schon begonnen hat",
+          "    $status = (Get-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\Servicing' -Name 'UEFICA2023Status' -ErrorAction SilentlyContinue).UEFICA2023Status",
+          "    if ($status) { $teile += 'Update=' + $status }",
+          "}",
+          "$text = $teile -join '; '",
+          "if ($text.Length -gt $max) { $text = $text.Substring(0, $max) }",
+          "Write-Output $text",
+          "exit $exitCode"
+        ],
+        "ExitCode": "SECUREBOOT_STATUS_EXIT",
+        "OutputLines": "SECUREBOOT_STATUS",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TStoreValueOnACMPServer",
+      "description": "Ergebnis im Feld „SecureBootStatus“ speichern",
+      "fields": {
+        "_DataVersion": "2",
+        "Tablename": "{{CF:SecureBootStatus:Tablename}}",
+        "Fieldname": "{{CF:SecureBootStatus:Fieldname}}",
+        "FieldDisplayName": "SecureBootStatus",
+        "FieldType": "1",
+        "FieldID": "{{CF:SecureBootStatus:FieldID}}",
+        "Value": "%SECUREBOOT_STATUS%",
+        "TableType": "0",
+        "TableDisplayName": "Attribute",
+        "TableID": "{{CF:SecureBootStatus:TableID}}",
+        "Tablenames": "",
+        "Fieldnames": "",
+        "FieldDisplayNames": "",
+        "FieldTypes": "",
+        "FieldIDs": "",
+        "Values": "",
+        "TableTypes": "",
+        "TableDisplayNames": "",
+        "TableIds": "",
+        "FolderTypes": "",
+        "FolderNames": "",
+        "FolderGuids": "",
+        "ClientID": "",
+        "ClearPreviousValues": "False",
+        "StoreMultiValue": "False",
+        "StoredCustomFields": "{\"StoredCustomFields\":[{\"Id\":\"{{CF:SecureBootStatus:FieldID}}\",\"ParentId\":\"{{CF:SecureBootStatus:TableID}}\",\"DisplayName_en\":\"SecureBootStatus\",\"DisplayName_de\":\"SecureBootStatus\",\"IsMultiField\":false,\"InputMethod\":\"imText\",\"MaxLength\":100,\"FieldHeight\":0,\"RangeMin\":0,\"RangeMax\":0,\"DecimalPlaces\":0,\"HasRange\":false}]}",
+        "StoredTables": "{\"StoredTables\":[{\"Id\":\"{{CF:SecureBootStatus:TableID}}\",\"ParentId\":\"{{CF:SecureBootStatus:FolderID}}\",\"DisplayName\":\"Attribute\",\"IsMultiTable\":false}]}",
+        "StoredFolders": "{\"StoredFolders\":[{\"Id\":\"{{CF:SecureBootStatus:FolderID}}\",\"ParentId\":\"{{CF:SecureBootStatus:FolderParentID}}\",\"DisplayName\":\"Client Info\"}]}"
+      }
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,395 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "store-app-deinstallieren",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Store-App (MSIX/Appx) deinstallieren",
+  "summary": "Entfernt eine Store- oder MSIX-App bei allen Benutzern und löscht die Bereitstellung, damit sie bei neuen Benutzern nicht wiederkommt. Passt etwa für WhatsApp, Claude, ChatGPT oder vorinstallierte Windows-Apps.",
+  "description": "## So funktioniert es\n1. Sucht die App über den genauen Paketnamen (`APP_PAKETNAME`) in der Bereitstellung (`Get-AppxProvisionedPackage`) und bei allen Benutzern (`Get-AppxPackage -AllUsers`).\n2. Beendet laufende Programme aus dem Paketordner, auch Hintergrunddienste der App. Systemprozesse bleiben verschont.\n3. Entfernt die Bereitstellung und danach die App bei allen Benutzern.\n4. Prüft, ob nichts mehr da ist, und stößt den Software-Scanner an.\n5. Bei `HINWEISE` = ja bekommt der angemeldete Benutzer eine kurze Meldung.\n\n## Ergebnis/Exitcodes\n- 0 = deinstalliert\n- 20 = war nicht installiert\n- 5 = danach noch vorhanden\n- 2 = Paketname fehlt, ist ungültig oder enthält Platzhalter\n- 1 = sonstiger Fehler\n\nBei 0 und 20 endet der Command erfolgreich, sonst mit Fehler.\n\n## Hinweise\n- Den Paketnamen zeigt `Get-AppxPackage -AllUsers *Name* | Select Name` auf einem Rechner mit der App. Beispiele: `5319275A.WhatsAppDesktop` (WhatsApp), `Claude` (Claude), `OpenAI.Codex` (ChatGPT).\n- Erlaubt sind nur Buchstaben, Ziffern, Punkt und Bindestrich. Platzhalter wie `*` sind absichtlich nicht erlaubt, damit nicht versehentlich viele Apps verschwinden.\n- Systemkomponenten wie den Microsoft Store selbst nicht entfernen.\n- Protokoll: `C:\\Windows\\Temp\\acmp-store-app-uninstall.log`.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Software",
+  "tags": [
+    "Deinstallation",
+    "MSIX",
+    "Appx",
+    "Microsoft Store",
+    "Bereitstellung",
+    "Kiosk"
+  ],
+  "applications": [
+    {
+      "name": "Microsoft Store",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "APP_NAME",
+      "description": "Anzeigename für Meldungen und Protokoll, z. B. WhatsApp",
+      "required": true
+    },
+    {
+      "name": "PAKETNAME",
+      "description": "Genauer Appx-Paketname ohne Platzhalter, z. B. 5319275A.WhatsAppDesktop",
+      "required": true
+    },
+    {
+      "name": "HINWEISE",
+      "description": "ja = Benutzer bekommt eine Meldung (schließt sich nach 2 Minuten), nein = still ohne Meldung, etwa für Verteilungen im Hintergrund",
+      "default": "ja",
+      "required": true
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Die Deinstallation läuft als Dienst (SYSTEM), die Meldungen als angemeldeter Benutzer.",
+      "Der Schritt „Software Scanner ausführen“ nutzt die Standard-Aufgabe von ACMP. Fehlt sie, wird der Schritt übersprungen (Fehler ignorieren ist an).",
+      "Kein Neustart nötig."
+    ]
+  },
+  "variables": [
+    {
+      "name": "APP_ANZEIGENAME",
+      "value": "{{APP_NAME}}"
+    },
+    {
+      "name": "APP_PAKETNAME",
+      "value": "{{PAKETNAME}}"
+    },
+    {
+      "name": "APP_HINWEISE",
+      "value": "{{HINWEISE}}"
+    },
+    {
+      "name": "UNINSTALL_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Store-App bei allen Benutzern deinstallieren (als SYSTEM)",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Entfernt Bereitstellung und Installationen des Pakets APP_PAKETNAME bei allen Benutzern und prüft das Ergebnis. Rückgabe in UNINSTALL_EXITCODE (0 deinstalliert, 20 war nicht installiert, 5 noch vorhanden).",
+        "BatchLines": [
+          "# Store-/MSIX-App deinstallieren, fuer alle Benutzer des Rechners",
+          "#",
+          "# Laeuft als SYSTEM ueber ACMP (64-Bit-PowerShell).",
+          "# Paketname und Anzeigename kommen aus den Projektvariablen APP_PAKETNAME und APP_ANZEIGENAME.",
+          "#",
+          "# Ablauf:",
+          "#  1. Bereitstellung (fuer neue Benutzer) und Installationen bei allen Benutzern suchen",
+          "#     Nichts gefunden: fertig (Rueckgabe 20)",
+          "#  2. laufende Programme aus dem Paketordner beenden (auch Hintergrunddienste der App)",
+          "#  3. Bereitstellung entfernen, damit die App bei neuen Benutzern nicht wiederkommt",
+          "#  4. App bei allen Benutzern entfernen",
+          "#  5. pruefen, ob nichts mehr da ist",
+          "#",
+          "# Rueckgabe: 0 deinstalliert, 20 war nicht installiert, 5 danach noch vorhanden,",
+          "#            2 Paketname fehlt oder enthaelt Platzhalter, 1 sonstiger Fehler.",
+          "# Protokoll: C:\\Windows\\Temp\\acmp-store-app-uninstall.log",
+          "",
+          "$paketName = '%APP_PAKETNAME%'.Trim()",
+          "$appName   = '%APP_ANZEIGENAME%'.Trim()",
+          "if (-not $appName) { $appName = $paketName }",
+          "$nurPruefen = $false   # true = nur anzeigen, was passieren wuerde",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "$ProgressPreference    = 'SilentlyContinue'",
+          "$logDatei = Join-Path $env:windir 'Temp\\acmp-store-app-uninstall.log'",
+          "if ($nurPruefen) { $logDatei = Join-Path $env:TEMP 'acmp-store-app-uninstall-probe.log' }",
+          "",
+          "function Schreibe([string]$text) {",
+          "    [Console]::Out.WriteLine($text)",
+          "    try { Add-Content -LiteralPath $logDatei -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $text) -Encoding UTF8 } catch { }",
+          "}",
+          "function Abbruch([int]$code, [string]$text) {",
+          "    Schreibe ('FEHLER ' + $code + ': ' + $text)",
+          "    exit $code",
+          "}",
+          "trap { Schreibe ('FEHLER 1: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "# Schutz: ohne genauen Paketnamen wuerden zu viele oder alle Apps getroffen.",
+          "# Paketnamen bestehen nur aus Buchstaben, Ziffern, Punkt und Bindestrich (3 bis 50 Zeichen), alles andere",
+          "# (auch Platzhalter wie * ? [ ]) wird abgelehnt.",
+          "if (-not $paketName -or $paketName -notmatch '^[A-Za-z0-9][A-Za-z0-9.\\-]{2,49}$') { Abbruch 2 ('Paketname fehlt oder ist ungueltig: \"' + $paketName + '\" (genauer Name ohne Platzhalter, z. B. 5319275A.WhatsAppDesktop)') }",
+          "",
+          "function Finde-Bereitstellung { @(Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq $paketName }) }",
+          "function Finde-Installationen {",
+          "    if ($nurPruefen) { return @(Get-AppxPackage -Name $paketName -ErrorAction SilentlyContinue) }",
+          "    @(Get-AppxPackage -AllUsers -Name $paketName -ErrorAction SilentlyContinue)",
+          "}",
+          "",
+          "Schreibe ('Start auf ' + $env:COMPUTERNAME + ': ' + $appName + ' (' + $paketName + ')' + ($(if ($nurPruefen) { ' (nur pruefen, nur aktueller Benutzer)' } else { '' })))",
+          "",
+          "# 1. Suchen",
+          "$bereit = @()",
+          "if (-not $nurPruefen) { $bereit = @(Finde-Bereitstellung) }",
+          "$pakete = @(Finde-Installationen)",
+          "foreach ($b in $bereit) { Schreibe ('Bereitgestellt: ' + $b.PackageName) }",
+          "foreach ($p in $pakete) { Schreibe ('Installiert: ' + $p.PackageFullName) }",
+          "if ($bereit.Count -eq 0 -and $pakete.Count -eq 0) { Schreibe ($appName + ' ist nicht installiert, nichts zu tun.'); exit 20 }",
+          "",
+          "# 2. Programme aus dem Paketordner beenden",
+          "# Schutz: Systemprozesse und dieses Skript nie beenden. Ordner wie C:\\Windows, System32 oder",
+          "# C:\\Program Files selbst (oder darueber) zaehlen nicht als Paketordner.",
+          "$schutzNamen = @('System', 'Idle', 'Registry', 'Memory Compression', 'smss', 'csrss', 'wininit', 'winlogon',",
+          "                 'services', 'lsass', 'lsaiso', 'svchost', 'fontdrvhost', 'dwm', 'MsMpEng')",
+          "$schutzOrdner = @($env:windir, (Join-Path $env:windir 'System32'), (Join-Path $env:windir 'SysWOW64'), (Join-Path $env:windir 'SystemApps'),",
+          "                  $env:ProgramFiles, ${env:ProgramFiles(x86)}, (Join-Path $env:ProgramFiles 'WindowsApps'), $env:ProgramData,",
+          "                  (Join-Path $env:SystemDrive 'Users')) |",
+          "    Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\\') + '\\' }",
+          "$ordner = @($pakete | Where-Object { $_.InstallLocation } | ForEach-Object { $_.InstallLocation.TrimEnd('\\') + '\\' } | Select-Object -Unique)",
+          "$ordner = @($ordner | Where-Object {",
+          "    $o = $_",
+          "    $schutz = ($o.Length -le 3) -or (@($schutzOrdner | Where-Object { $_.StartsWith($o, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0)",
+          "    if ($schutz) { Schreibe ('Paketordner ' + $o + ' ist ein Systemordner. Programme daraus werden nicht beendet.') }",
+          "    -not $schutz",
+          "})",
+          "foreach ($proz in @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path })) {",
+          "    if ($proz.Id -eq $PID -or $schutzNamen -contains $proz.ProcessName) { continue }",
+          "    foreach ($o in $ordner) {",
+          "        if ($proz.Path.StartsWith($o, [StringComparison]::OrdinalIgnoreCase)) {",
+          "            Schreibe ('Beende ' + $proz.ProcessName + ' (PID ' + $proz.Id + ')')",
+          "            if (-not $nurPruefen) { Stop-Process -Id $proz.Id -Force -ErrorAction SilentlyContinue }",
+          "            break",
+          "        }",
+          "    }",
+          "}",
+          "if ($nurPruefen) { Schreibe 'Probe beendet, nichts geaendert.'; exit 0 }",
+          "Start-Sleep -Seconds 2",
+          "",
+          "# 3. Bereitstellung entfernen",
+          "foreach ($b in $bereit) {",
+          "    try {",
+          "        Remove-AppxProvisionedPackage -Online -PackageName $b.PackageName -AllUsers | Out-Null",
+          "        Schreibe ('Bereitstellung entfernt: ' + $b.PackageName)",
+          "    } catch { Schreibe ('Bereitstellung entfernen fehlgeschlagen: ' + $_.Exception.Message) }",
+          "}",
+          "",
+          "# 4. Bei allen Benutzern entfernen",
+          "foreach ($p in $pakete) {",
+          "    try {",
+          "        Remove-AppxPackage -Package $p.PackageFullName -AllUsers",
+          "        Schreibe ('Entfernt: ' + $p.PackageFullName)",
+          "    } catch { Schreibe ('Entfernen fehlgeschlagen: ' + $p.PackageFullName + ': ' + $_.Exception.Message) }",
+          "}",
+          "",
+          "# 5. Pruefen",
+          "Start-Sleep -Seconds 3",
+          "$restB = @(Finde-Bereitstellung)",
+          "$restP = @(Finde-Installationen)",
+          "if ($restB.Count -gt 0 -or $restP.Count -gt 0) {",
+          "    foreach ($b in $restB) { Schreibe ('Noch bereitgestellt: ' + $b.PackageName) }",
+          "    foreach ($p in $restP) { Schreibe ('Noch installiert: ' + $p.PackageFullName) }",
+          "    Abbruch 5 ($appName + ' ist nach der Deinstallation noch vorhanden.')",
+          "}",
+          "Schreibe ($appName + ' ist deinstalliert.')",
+          "exit 0"
+        ],
+        "ExitCode": "UNINSTALL_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TEnqueueClientTask",
+      "description": "Software Scanner ausführen (Inventar aktualisieren)",
+      "fields": {
+        "_DataVersion": "4",
+        "Ignore_error": "True",
+        "TaskId": "{072BE601-5372-4618-9A6D-2571D230278E}",
+        "Task": "Software Scanner"
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn deinstalliert wurde",
+      "fields": {
+        "Value_1": "%UNINSTALL_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "=",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionIf",
+          "description": "Wenn Hinweise an den Benutzer gewünscht sind",
+          "fields": {
+            "Value_1": "%APP_HINWEISE%",
+            "Value_2": "ja",
+            "Operator": "=",
+            "CaseSensitive": "False",
+            "DigitsAsNumbers": "False"
+          },
+          "children": [
+            {
+              "class": "TMessageDialog",
+              "description": "Hinweis: deinstalliert",
+              "fields": {
+                "Ignore_error": "True",
+                "isSystem": "False",
+                "Title": "%APP_ANZEIGENAME%",
+                "Message_text": "%APP_ANZEIGENAME% wurde deinstalliert.",
+                "Prompt": "",
+                "Default_value": "",
+                "Variable_name": "",
+                "Suggestions": "",
+                "MessageboxType": "2",
+                "VisibleButtons": "1",
+                "FailButtons": "0",
+                "DenyManualInput": "False",
+                "Automatic_close": "True",
+                "Auto_close_after": "120",
+                "ResultAfterTimeOut": "1",
+                "DialogType": "0",
+                "Button_yes_caption": "Ja",
+                "Button_no_caption": "Nein",
+                "Button_cancel_caption": "Abbrechen",
+                "Button_ok_caption": "OK",
+                "Display_style": "0"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "TActionElse",
+      "description": "Sonst",
+      "fields": {},
+      "children": [
+        {
+          "class": "TActionIf",
+          "description": "Wenn es nicht installiert war",
+          "fields": {
+            "Value_1": "%UNINSTALL_EXITCODE%",
+            "Value_2": "20",
+            "Operator": "=",
+            "CaseSensitive": "False",
+            "DigitsAsNumbers": "False"
+          },
+          "children": [
+            {
+              "class": "TActionIf",
+              "description": "Wenn Hinweise an den Benutzer gewünscht sind",
+              "fields": {
+                "Value_1": "%APP_HINWEISE%",
+                "Value_2": "ja",
+                "Operator": "=",
+                "CaseSensitive": "False",
+                "DigitsAsNumbers": "False"
+              },
+              "children": [
+                {
+                  "class": "TMessageDialog",
+                  "description": "Hinweis: war nicht installiert",
+                  "fields": {
+                    "Ignore_error": "True",
+                    "isSystem": "False",
+                    "Title": "%APP_ANZEIGENAME%",
+                    "Message_text": "%APP_ANZEIGENAME% ist auf diesem Rechner nicht installiert.",
+                    "Prompt": "",
+                    "Default_value": "",
+                    "Variable_name": "",
+                    "Suggestions": "",
+                    "MessageboxType": "2",
+                    "VisibleButtons": "1",
+                    "FailButtons": "0",
+                    "DenyManualInput": "False",
+                    "Automatic_close": "True",
+                    "Auto_close_after": "120",
+                    "ResultAfterTimeOut": "1",
+                    "DialogType": "0",
+                    "Button_yes_caption": "Ja",
+                    "Button_no_caption": "Nein",
+                    "Button_cancel_caption": "Abbrechen",
+                    "Button_ok_caption": "OK",
+                    "Display_style": "0"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "class": "TActionElse",
+          "description": "Sonst",
+          "fields": {},
+          "children": [
+            {
+              "class": "TActionIf",
+              "description": "Wenn Hinweise an den Benutzer gewünscht sind",
+              "fields": {
+                "Value_1": "%APP_HINWEISE%",
+                "Value_2": "ja",
+                "Operator": "=",
+                "CaseSensitive": "False",
+                "DigitsAsNumbers": "False"
+              },
+              "children": [
+                {
+                  "class": "TMessageDialog",
+                  "description": "Fehlermeldung an den Benutzer",
+                  "fields": {
+                    "Ignore_error": "True",
+                    "isSystem": "False",
+                    "Title": "%APP_ANZEIGENAME%",
+                    "Message_text": "%APP_ANZEIGENAME% konnte nicht deinstalliert werden (Code %UNINSTALL_EXITCODE%).\r\n\r\nBitte melden Sie sich bei der IT.\r\nProtokoll: C:\\Windows\\Temp\\acmp-store-app-uninstall.log",
+                    "Prompt": "",
+                    "Default_value": "",
+                    "Variable_name": "",
+                    "Suggestions": "",
+                    "MessageboxType": "1",
+                    "VisibleButtons": "1",
+                    "FailButtons": "0",
+                    "DenyManualInput": "False",
+                    "Automatic_close": "True",
+                    "Auto_close_after": "120",
+                    "ResultAfterTimeOut": "1",
+                    "DialogType": "0",
+                    "Button_yes_caption": "Ja",
+                    "Button_no_caption": "Nein",
+                    "Button_cancel_caption": "Abbrechen",
+                    "Button_ok_caption": "OK",
+                    "Display_style": "0"
+                  }
+                }
+              ]
+            },
+            {
+              "class": "TActionExitScript",
+              "description": "Command mit Fehler beenden",
+              "fields": {
+                "Result": "1",
+                "Reason": "Deinstallation von %APP_ANZEIGENAME% fehlgeschlagen, Code %UNINSTALL_EXITCODE%, Protokoll C:\\Windows\\Temp\\acmp-store-app-uninstall.log"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "files": []
+}

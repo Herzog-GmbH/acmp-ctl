@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ACMP CTL</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Offene Bibliothek mit Client-Command-Vorlagen für ACMP. Jeder Schritt im Klartext, installierbar als Entwurf über den ACMP MCP.">
+<link rel="preload" href="fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+/* ACMP CTL: Katalog für Client-Command-Vorlagen.
+   Schrift: Geist und Geist Mono (Vercel, SIL OFL), lokal eingebunden, kein Abruf bei Dritten.
+   Formen: Eingaben und Knöpfe 8px, Flächen 12px, Marken und Filter 999px. Eine Akzentfarbe (Petrol), Statusfarben nur für echte Zustände. */
+@font-face{font-family:"Geist";src:url("fonts/Geist-Variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"Geist Mono";src:url("fonts/GeistMono-Variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
+:root{
+  --bg:#F6F7F8; --surface:#FFFFFF; --sunken:#EEF0F2; --ink:#16191D; --muted:#5A636E; --line:#E0E3E7; --line-strong:#C9CED4;
+  --accent:#0D7468; --accent-ink:#FFFFFF; --accent-soft:#E2F1EE;
+  --warn:#8A5A00; --warn-soft:#FBF0DA; --danger:#A33A2C; --danger-soft:#F8E3DE;
+  --info:#285E8E; --info-soft:#E5EDF6; --ok:#2E6A3D; --ok-soft:#E2F0E5; --mark:#FFE7A0;
+  --shadow:0 1px 2px rgb(22 25 29 / .04), 0 4px 16px rgb(22 25 29 / .05);
+  --f-ui:"Geist",ui-sans-serif,"Segoe UI",system-ui,sans-serif;
+  --f-mono:"Geist Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1113; --surface:#16191C; --sunken:#1D2125; --ink:#E6E8EB; --muted:#9AA3AD; --line:#2A2F35; --line-strong:#3A4048;
+    --accent:#56C2B3; --accent-ink:#062420; --accent-soft:#12302C;
+    --warn:#E2B15E; --warn-soft:#33280F; --danger:#EE8E7E; --danger-soft:#3A1F1A;
+    --info:#8DB6E2; --info-soft:#172636; --ok:#84C994; --ok-soft:#16301C; --mark:#5A4B12;
+    --shadow:0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1113; --surface:#16191C; --sunken:#1D2125; --ink:#E6E8EB; --muted:#9AA3AD; --line:#2A2F35; --line-strong:#3A4048;
+  --accent:#56C2B3; --accent-ink:#062420; --accent-soft:#12302C;
+  --warn:#E2B15E; --warn-soft:#33280F; --danger:#EE8E7E; --danger-soft:#3A1F1A;
+  --info:#8DB6E2; --info-soft:#172636; --ok:#84C994; --ok-soft:#16301C; --mark:#5A4B12;
+  --shadow:0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:80px}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 var(--f-ui);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+button,input,select{font-family:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+a{color:var(--accent);text-underline-offset:2px}
+code,kbd,pre{font-family:var(--f-mono)}
+.wrap{max-width:1280px;margin:0 auto;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
+@media (max-width:640px){.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}}
+
+/* Kopfzeile */
+.nav{position:sticky;top:env(safe-area-inset-top,0px);z-index:30;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(150%) blur(10px);-webkit-backdrop-filter:saturate(150%) blur(10px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;gap:20px;height:60px}
+.word{display:flex;align-items:baseline;gap:8px;text-decoration:none;color:var(--ink);flex:none}
+.word b{font:650 17px/1 var(--f-ui);letter-spacing:-.01em}
+.word span{font:500 13px/1 var(--f-ui);color:var(--muted)}
+.nav nav{display:flex;gap:4px;margin-left:auto}
+.nav nav a{color:var(--muted);text-decoration:none;font-size:14px;font-weight:500;padding:8px 10px;border-radius:8px;white-space:nowrap}
+.nav nav a:hover{color:var(--ink);background:var(--sunken)}
+@media (max-width:720px){.nav nav a.opt{display:none}.word span{display:none}}
+
+/* Einstieg */
+.hero{padding-block:48px 8px}
+.hero h1{font:650 clamp(30px,4.2vw,44px)/1.1 var(--f-ui);letter-spacing:-.025em;margin:0;max-width:20ch;text-wrap:balance}
+.hero .sub{margin:14px 0 0;font-size:17px;line-height:1.55;color:var(--muted);max-width:56ch}
+@media (max-width:640px){.hero{padding-block:32px 4px}.hero .sub{font-size:16px}}
+
+/* Suche */
+.search{margin-top:28px}
+.sbox{position:relative;max-width:860px}
+.sbox input{width:100%;font:450 17px/1.3 var(--f-ui);padding:15px 56px 15px 46px;border:1px solid var(--line-strong);border-radius:12px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow);-webkit-appearance:none;appearance:none}
+.sbox input::placeholder{color:var(--muted)}
+.sbox input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.sbox .ic{position:absolute;left:16px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted);pointer-events:none}
+.sbox kbd{position:absolute;right:14px;top:50%;transform:translateY(-50%);font:500 12px/1 var(--f-mono);border:1px solid var(--line);border-bottom-width:2px;padding:4px 7px;border-radius:6px;color:var(--muted);background:var(--bg)}
+@media (max-width:640px){.sbox kbd{display:none}.sbox input{font-size:16px;padding-right:16px}}
+.quick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;font-size:13px;color:var(--muted);max-width:980px}
+.quick .lbl{margin-right:4px}
+.qa,.qq{font:500 13px/1 var(--f-ui);padding:7px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;gap:6px;align-items:center;transition:border-color .15s,background-color .15s}
+.qa .n{font:500 11.5px/1 var(--f-mono);color:var(--muted)}
+.qa[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.qa[aria-pressed="true"] .n{color:inherit;opacity:.75}
+.qq{font-family:var(--f-mono);font-size:12.5px;background:transparent}
+.qq:hover,.qa:hover{border-color:var(--line-strong);background:var(--sunken)}
+.qa[aria-pressed="true"]:hover{background:var(--accent)}
+.note{font-size:13px;color:var(--muted);margin:14px 0 0;max-width:90ch}
+
+/* Katalog */
+.catalog{margin-top:36px}
+.filters{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;justify-content:space-between;padding-block:14px;border-top:1px solid var(--line)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
+.chip{font:500 13px/1 var(--f-ui);padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;gap:6px;align-items:center;transition:border-color .15s}
+.chip .n{font:500 11.5px/1 var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
+.chip:hover{border-color:var(--line-strong)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chip[aria-pressed="true"] .n{color:inherit;opacity:.7}
+.chip:disabled{opacity:.4;cursor:default}
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
+.seg button{font:500 13px/1 var(--f-ui);padding:8px 11px;border:0;background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent)}
+.seg .n{font:500 11.5px/1 var(--f-mono);margin-left:5px;opacity:.8}
+select{font:500 13px/1 var(--f-ui);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);max-width:100%}
+
+.layout{display:grid;gap:20px;padding-bottom:8px}
+@media (min-width:1000px){.layout{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-items:start}}
+.list{min-width:0}
+.rescount{font-size:13px;color:var(--muted);margin:2px 0 10px;font-variant-numeric:tabular-nums;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rescount button{font:500 12px/1 var(--f-ui);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 8px;cursor:pointer}
+.cards{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.card{display:block;padding:14px 16px;color:inherit;text-decoration:none;border-bottom:1px solid var(--line);transition:background-color .12s}
+.card:last-child{border-bottom:0}
+.card:hover{background:var(--sunken)}
+.card[aria-current="true"]{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.card:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.c-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
+.card h3{font-size:15px;font-weight:600;margin:0;line-height:1.35;min-width:0;overflow-wrap:anywhere}
+.src{flex:none;font:500 11.5px/1 var(--f-ui);padding:4px 8px;border-radius:999px;margin-top:1px;white-space:nowrap}
+.src.ok{background:var(--ok-soft);color:var(--ok)}
+.src.demo{background:var(--warn-soft);color:var(--warn)}
+.src.cf{background:var(--sunken);color:var(--muted)}
+.sum{margin:4px 0 0;color:var(--muted);font-size:14px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.hit{margin:8px 0 0;font:12.5px/1.45 var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 9px;overflow-wrap:anywhere}
+.hit b{font:600 12px/1 var(--f-ui);color:var(--accent);margin-right:6px}
+.apps{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.app{font:500 12px/1.2 var(--f-ui);padding:3px 8px;border-radius:999px;background:var(--info-soft);color:var(--info);display:inline-flex;align-items:center;border:0}
+button.app{cursor:pointer}
+button.app:hover{filter:brightness(.96)}
+.meta{display:flex;flex-wrap:wrap;gap:2px 14px;margin-top:8px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.flags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.flag{font-size:12px;font-weight:500;padding:3px 8px;border-radius:999px;background:var(--sunken);color:var(--muted);line-height:1.35}
+.flag.warn{background:var(--warn-soft);color:var(--warn)}
+.flag.danger{background:var(--danger-soft);color:var(--danger)}
+.flag.info{background:var(--info-soft);color:var(--info)}
+mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
+.empty{padding:28px 20px}
+.empty p{margin:0 0 12px;color:var(--muted);max-width:56ch}
+.skel{display:grid;gap:10px;padding:16px}
+.skel i{display:block;height:14px;border-radius:6px;background:var(--sunken)}
+.skel i:nth-child(3n+1){width:62%}.skel i:nth-child(3n+2){width:88%}.skel i:nth-child(3n){width:40%;margin-bottom:12px}
+
+/* Detail */
+.detail{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:24px 26px}
+.detail>*{animation:fade .18s ease-out}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.back{display:inline-flex;gap:6px;align-items:center;font:500 14px/1 var(--f-ui);border:0;background:transparent;color:var(--accent);padding:6px 0;margin-bottom:12px;cursor:pointer}
+@media (min-width:1000px){
+  .detail{position:sticky;top:76px;max-height:calc(100vh - 92px);overflow:auto}
+  .back{display:none}
+}
+@media (max-width:999.98px){
+  .detail{display:none}
+  body.show-detail{overflow:hidden}
+  body.show-detail .detail{display:block;position:fixed;inset:0;z-index:40;border:0;border-radius:0;overflow:auto;background:var(--surface);
+    padding:calc(env(safe-area-inset-top,0px) + 12px) 16px calc(env(safe-area-inset-bottom,0px) + 32px)}
+}
+.dmeta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.dmeta .v{font-family:var(--f-mono);font-size:12.5px}
+.detail h2{font-size:24px;line-height:1.2;margin:8px 0 8px;font-weight:650;letter-spacing:-.02em;text-wrap:balance}
+.lead{margin:0;font-size:15px;max-width:66ch}
+.sec{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
+.sec>h3{font:600 14px/1.3 var(--f-ui);margin:0 0 10px;display:flex;gap:8px;align-items:center}
+.sec>h3 .n{font:500 12px/1 var(--f-mono);color:var(--muted)}
+.sec ul{margin:0;padding-left:18px}
+.sec li{margin:3px 0}
+.notice{margin:0 0 12px;font-size:13.5px;background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 12px}
+.status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:12px 0 0}
+
+.install{margin-top:22px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:18px}
+.install h3{font-size:15px;font-weight:600;margin:0 0 4px}
+.install .hint{margin:0 0 14px;font-size:13.5px;color:var(--muted);max-width:66ch}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+.fields label{display:block;font-size:13px;font-weight:500;margin-bottom:6px}
+.fields label code{font:500 12.5px/1 var(--f-mono);color:var(--accent)}
+.fields input{width:100%;font:13.5px/1.3 var(--f-mono);padding:9px 10px;border:1px solid var(--line-strong);border-radius:8px;background:var(--surface);color:var(--ink)}
+.fields input::placeholder{color:var(--muted)}
+.fields input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.fields .pd{font-size:12.5px;color:var(--muted);margin-top:4px}
+.prompt{margin-top:14px;display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px}
+.prompt p{margin:0;flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+@media (max-width:480px){.prompt{flex-direction:column}}
+.btn{font:600 13.5px/1 var(--f-ui);padding:10px 14px;border-radius:8px;border:1px solid transparent;background:var(--accent);color:var(--accent-ink);cursor:pointer;flex:none;text-decoration:none;display:inline-flex;gap:6px;align-items:center;white-space:nowrap;transition:filter .15s,transform .1s}
+.btn.ghost{background:var(--surface);color:var(--ink);border-color:var(--line-strong)}
+.btn:hover{filter:brightness(1.06)}
+.btn.ghost:hover{filter:none;background:var(--sunken)}
+.btn:active{transform:translateY(1px)}
+.flow{margin:12px 0 0;font-size:13px;color:var(--muted)}
+details summary{cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);margin-top:12px}
+details .row{display:flex;justify-content:flex-end;margin-top:8px}
+pre{font:12.5px/1.6 var(--f-mono);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;margin:8px 0 0;max-height:380px;color:var(--ink);tab-size:4}
+
+.tree{list-style:none;margin:0;padding:0}
+.tree .tree{margin-left:4px;padding-left:18px;border-left:1px dashed var(--line-strong)}
+.st{display:flex;gap:10px;align-items:flex-start;padding:7px 0}
+.dot{width:9px;height:9px;border-radius:3px;margin-top:7px;flex:none;background:var(--muted);display:inline-block}
+.f-exec{background:var(--warn)}.f-reg{background:var(--info)}.f-file{background:var(--accent)}.f-svc{background:var(--ok)}
+.f-flow{background:transparent;border:2px solid var(--muted)}.f-var{background:var(--line);border:2px solid var(--muted)}
+.st-main{flex:1;min-width:0}
+.st-d{display:block;font-weight:500;font-size:14px}
+.st-x{display:block;font:12.5px/1.5 var(--f-mono);color:var(--muted);overflow-wrap:anywhere}
+.var{color:var(--accent);font-weight:500}
+.ph{color:var(--warn);font-weight:500}
+.st-c{font:12px/1.8 var(--f-mono);color:var(--muted);flex:none}
+@media (max-width:560px){.st-c{display:none}}
+.st-code summary{margin-top:4px;font-size:12.5px}
+.st-code pre{max-height:340px;white-space:pre;font-size:12px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);margin-top:12px}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+.legend .dot{margin-top:0}
+
+.desc{font-size:14.5px;max-width:70ch}
+.desc h4{font:600 14px/1.35 var(--f-ui);margin:16px 0 4px}
+.desc h4:first-child{margin-top:0}
+.desc p{margin:0 0 8px}
+.desc ul,.desc ol{margin:0 0 8px;padding-left:20px}
+.desc li{margin:3px 0}
+.desc code{font:12.5px/1.4 var(--f-mono);background:var(--sunken);border-radius:4px;padding:1px 5px;overflow-wrap:anywhere}
+.links{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+
+.ftable{width:100%;border-collapse:collapse;font-size:13.5px}
+.ftable td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top}
+.ftable tr:last-child td{border-bottom:0}
+.ftable .mono{font-family:var(--f-mono);font-size:12.5px;overflow-wrap:anywhere}
+.cfbox{margin-top:20px;background:var(--bg);border:1px dashed var(--line-strong);border-radius:12px;padding:16px}
+.cfbox h3{font-size:15px;font-weight:600;margin:0 0 4px}
+.cfbox p{margin:0 0 12px;font-size:13.5px;color:var(--muted);max-width:64ch}
+.stats{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stats b{color:var(--ink);font-weight:600}
+
+/* Startansicht im Detailfenster */
+.welcome h2{margin:0 0 6px}
+.welcome .lead{color:var(--muted)}
+.welcome dl{margin:18px 0 0;display:grid;gap:14px}
+.welcome dt{font-weight:600;font-size:14.5px}
+.welcome dd{margin:2px 0 0;color:var(--muted);font-size:14px;max-width:62ch}
+.welcome .newest a{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink);font-weight:500;font-size:14px}
+.welcome .newest a:last-child{border-bottom:0}
+.welcome .newest a span{font-weight:400;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.welcome .newest a:hover{color:var(--accent)}
+
+/* ACMP MCP */
+.mcp{margin-top:72px;padding-top:40px;border-top:1px solid var(--line);display:grid;gap:32px}
+@media (min-width:960px){.mcp{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:56px}}
+.mcp h2,.contrib h2{font:650 28px/1.15 var(--f-ui);letter-spacing:-.02em;margin:0 0 12px;text-wrap:balance}
+.mcp .intro{margin:0;color:var(--muted);max-width:56ch;font-size:15.5px}
+.caps{margin:24px 0 0;display:grid;gap:16px 28px}
+@media (min-width:640px){.caps{grid-template-columns:1fr 1fr}}
+.caps dt{font-weight:600;font-size:14.5px}
+.caps dd{margin:3px 0 0;color:var(--muted);font-size:14px}
+.setup{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px;box-shadow:var(--shadow);align-self:start}
+.setup h3{font-size:16px;font-weight:600;margin:0 0 6px}
+.setup p{margin:0;color:var(--muted);font-size:14px;max-width:52ch}
+.setup pre{white-space:pre-wrap;margin-top:14px}
+.setup .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+
+/* Beitragen */
+.contrib{margin-top:64px;padding-top:40px;border-top:1px solid var(--line);max-width:880px}
+.contrib>p{margin:0;color:var(--muted);font-size:15.5px;max-width:62ch}
+.contrib pre{margin-top:18px;white-space:pre-wrap}
+.contrib .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+
+footer{margin-top:72px;padding-block:24px 40px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
+footer p{margin:0;max-width:78ch}
+footer nav{display:flex;gap:18px;flex-wrap:wrap}
+footer a{color:var(--muted)}
+footer a:hover{color:var(--ink)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+</style>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="word" href="#top"><b>ACMP CTL</b><span>Community Template Library</span></a>
+    <nav aria-label="Seitenbereiche">
+      <a href="#vorlagen">Vorlagen</a>
+      <a class="opt" href="#mcp">ACMP MCP</a>
+      <a class="opt" href="#beitragen">Beitragen</a>
+      <a href="https://github.com/Herzog-GmbH/acmp-ctl" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <div class="wrap">
+    <section class="hero" aria-labelledby="hero-h">
+      <h1 id="hero-h">Client Commands für ACMP, die man vorher lesen kann.</h1>
+      <p class="sub">Fertige Vorlagen, jeder Schritt im Klartext. Eure KI legt sie über den ACMP MCP als Entwurf an.</p>
+      <div class="search">
+        <div class="sbox">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Anwendung, Aufgabe, Dienst oder Registry-Pfad" aria-label="Vorlagen durchsuchen">
+          <kbd>/</kbd>
+        </div>
+        <div class="quick" id="quick-apps"><span class="lbl">Anwendungen</span></div>
+        <div class="quick"><span class="lbl">Häufig gesucht</span>
+          <button type="button" class="qq" data-q="Spooler">Spooler</button>
+          <button type="button" class="qq" data-q="winget">winget</button>
+          <button type="button" class="qq" data-q="Secure Boot">Secure Boot</button>
+          <button type="button" class="qq" data-q="BitLocker">BitLocker</button>
+          <button type="button" class="qq" data-q="HKLM Edge">HKLM Edge</button>
+        </div>
+        <p class="note" id="note">Vorlagen werden geladen.</p>
+      </div>
+    </section>
+
+    <section class="catalog" id="vorlagen" aria-label="Vorlagen">
+      <div class="filters">
+        <div class="chips" id="chips" role="group" aria-label="Kategorie"></div>
+        <div class="controls">
+          <select id="app" aria-label="Anwendung"><option value="">Alle Anwendungen</option></select>
+          <div class="seg" id="seg" role="group" aria-label="Quelle"></div>
+          <select id="sort" aria-label="Sortierung">
+            <option value="rel">Relevanz</option>
+            <option value="new">Neueste zuerst</option>
+            <option value="name">Name A bis Z</option>
+          </select>
+        </div>
+      </div>
+      <div class="layout">
+        <section class="list" aria-label="Treffer">
+          <p class="rescount" id="rescount" aria-live="polite"></p>
+          <div class="cards" id="cards"><div class="skel" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        </section>
+        <aside class="detail" id="detail" aria-label="Details"></aside>
+      </div>
+    </section>
+
+    <section class="mcp" id="mcp" aria-labelledby="mcp-h">
+      <div>
+        <h2 id="mcp-h">Installiert wird mit dem ACMP MCP</h2>
+        <p class="intro">Der ACMP MCP verbindet eure KI mit der ACMP Public API. Ihr fragt in normaler Sprache, die KI holt die Antwort aus ACMP. Die Vorlagen hier sind eine Sache, die damit geht.</p>
+        <dl class="caps">
+          <div><dt>Fragen statt klicken</dt><dd>Clients, Software, Schwachstellen, BitLocker, Tickets und Assets. „Wo ist 7-Zip drauf?“ reicht.</dd></div>
+          <div><dt>Client Commands und Kiosk</dt><dd>Entwürfe anlegen, vorhandene Commands als neue Version korrigieren, freigeben, Kiosk-Einträge pflegen.</dd></div>
+          <div><dt>Vier-Augen-Freigabe</dt><dd>Was etwas ändert, läuft erst nach Zustimmung auf der Freigabe-Seite. Wie viele zustimmen müssen, stellt ihr pro Tool ein.</dd></div>
+          <div><dt>Läuft bei euch</dt><dd>Eine Windows-EXE auf dem ACMP-Server. Kein IIS, keine Cloud, jede KI mit MCP-Unterstützung.</dd></div>
+        </dl>
+      </div>
+      <div class="setup">
+        <h3>Einrichten lassen</h3>
+        <p>Repo auf dem ACMP-Server klonen, dort einen KI-Agenten starten und diesen Satz eingeben. Die Admin-Schritte erklärt er, ausführen tut ihr sie.</p>
+        <pre id="setup-text">Richte diesen ACMP-MCP-Server auf diesem Rechner ein. Folge AGENTS.md Schritt für Schritt, erkläre mir jeden Admin-Schritt, bevor ich ihn ausführe, und frag mich nie nach Passwörtern oder API-Keys im Chat.</pre>
+        <div class="row">
+          <button type="button" class="btn ghost" data-copy="setup-text">Text kopieren</button>
+          <a class="btn" href="https://github.com/Herzog-GmbH/acmp-mcp" target="_blank" rel="noopener">ACMP MCP auf GitHub</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="contrib" id="beitragen" aria-labelledby="contrib-h">
+      <h2 id="contrib-h">Eigene Commands beitragen</h2>
+      <p>Jede Vorlage ist eine lesbare JSON-Datei. Ihr lest euren Command mit dem MCP aus und wandelt ihn um. Kennwörter, Konten und interne Pfade werden dabei entfernt oder zu Parametern. Die Prüfung läuft automatisch, danach schaut ein Mensch drüber.</p>
+      <pre>node tools/from-decode.mjs mein-command.decode.json --id mein-command --category Wartung
+node tools/build.mjs --check</pre>
+      <div class="row">
+        <a class="btn ghost" href="https://github.com/Herzog-GmbH/acmp-ctl/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Anleitung zum Beitragen</a>
+        <a class="btn ghost" href="https://github.com/Herzog-GmbH/acmp-ctl/issues/new?template=vorlagenwunsch.md" target="_blank" rel="noopener">Vorlage wünschen</a>
+      </div>
+    </section>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>ACMP CTL ist ein Community-Projekt der herzog GmbH und kein Angebot der Aagon GmbH. ACMP ist ein Produkt der Aagon GmbH. Einträge aus der Aagon Community Filebase sind nur verlinkt, die Exporte gehören ihren Autoren.</p>
+    <nav aria-label="Weitere Links">
+      <a href="https://github.com/Herzog-GmbH/acmp-ctl" target="_blank" rel="noopener">Repo</a>
+      <a href="https://github.com/Herzog-GmbH/acmp-ctl/blob/main/LICENSE" target="_blank" rel="noopener">MIT-Lizenz</a>
+      <a href="https://github.com/Herzog-GmbH/acmp-mcp" target="_blank" rel="noopener">ACMP MCP</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+const norm=s=>(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\u00df/g,'ss');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const flat=(steps,out=[])=>{for(const s of steps||[]){out.push(s);if(s.children)flat(s.children,out)}return out};
+const fmtDate=d=>{const [y,m,t]=String(d).split('-');return `${t}.${m}.${y}`};
+const nf=new Intl.NumberFormat('de-DE');
+const $=s=>document.querySelector(s);
+const mqWide=window.matchMedia('(min-width: 1000px)');
+
+let CATS=[],ALL=[],BYKEY={},APPS=[];
+const state={q:'',cat:'Alle',app:'',src:'all',sort:'rel',sel:null,folder:'',params:{}};
+try{state.folder=localStorage.getItem('ctl-folder')||''}catch(e){}
+
+const FAM={exec:'TExecuteCommand TExecutePowerShell TExecuteBatchCommand TInstallMsiPackage TDelphiScript TRunClientCommand',
+ reg:'TModifyReg TSetProjectVarFromRegistry TDeleteRegistryValue TIfRegKeyExists TIfRegValueNameExists',
+ file:'TDownloadFile TUploadFile TDeleteFilesCommand TRenameFolder TRenameFile TDeleteDir TMakeDir TCopySingleFile TCopyFileList TCopyFolder TExtractZipArchive',
+ svc:'TControlNTService TEnqueueShutDown',
+ flow:'TActionIf TActionElse TActionSwitch TActionCase TActionGroup TActionExitScript TIsSoftwareInstalledCommand TIfDirectoryExists TIfFileExists TisOPSystem TIsOsArchitecture'};
+const FAMS=Object.fromEntries(Object.entries(FAM).map(([k,v])=>[k,new Set(v.split(' '))]));
+const fam=c=>{for(const [k,set] of Object.entries(FAMS)) if(set.has(c)) return k; return 'var'};
+const flagHtml=f=>f.length?`<div class="flags">${f.map(([c,t])=>`<span class="flag ${c}">${esc(t)}</span>`).join('')}</div>`:'';
+const appsHtml=(apps,btn)=>apps.length?`<div class="apps">${apps.map(a=>btn
+  ?`<button type="button" class="app" data-app="${esc(a.name)}" title="Alle Vorlagen für ${esc(a.name)}">${esc(a.name)}</button>`
+  :`<span class="app">${esc(a.name)}</span>`).join('')}</div>`:'';
+
+function load(data){
+  CATS=data.categories;
+  const lib=data.templates.map(t=>({key:t.id,src:'lib',name:t.name,sum:t.summary,cat:t.category,date:t.updated,author:t.author?.name||'',
+    tags:t.tags||[],apps:t.applications||[],v:t.version,status:t.status,params:t.parameters||[],req:t.requires||{},files:t.files||[],
+    steps:t.steps,flat:flat(t.steps),flags:t.flags||[],raw:t}));
+  const cf=data.community.entries.map(e=>({key:'filebase-'+e.id,src:'cf',fid:e.id,name:e.title,sum:e.summary,cat:e.category,date:e.date,author:e.author,
+    dl:e.downloads,cm:e.comments,dep:e.requires||[],sims:e.files||[],tags:e.tags||[],apps:e.applications||[],
+    flags:[...(e.requires?.length?[['',e.requires.length===1?'1 Voraussetzung':e.requires.length+' Voraussetzungen']]:[]),...((e.tags||[]).includes('Premium')?[['','Premium']]:[])]}));
+  state.entryUrl=data.community.entryUrl;
+  ALL=[...lib,...cf];
+  BYKEY=Object.fromEntries(ALL.map(i=>[i.key,i]));
+  const am=new Map();
+  for(const i of ALL){
+    i._n=norm(i.name); i._a=norm(i.apps.map(a=>a.name+' '+(a.vendor||'')).join(' '));
+    i._t=norm([i.cat,...i.tags].join(' '));
+    i._s=norm([i.sum,...(i.dep||[]),...(i.sims||[]),...(i.req?.notes||[]),...(i.req?.customFields||[]).map(c=>c.name),...(i.params||[]).map(p=>p.name+' '+p.description)].join(' '));
+    i._st=(i.flat||[]).map(s=>({s,t:norm([s.description,s.summary,s.class].join(' '))}));
+    for(const a of i.apps){const e=am.get(a.name)||{name:a.name,vendor:a.vendor||'',n:0};e.n++;am.set(a.name,e)}
+  }
+  APPS=[...am.values()].sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name,'de'));
+  $('#app').innerHTML='<option value="">Alle Anwendungen</option>'+[...APPS].sort((a,b)=>a.name.localeCompare(b.name,'de'))
+    .map(a=>`<option value="${esc(a.name)}">${esc(a.name)}${a.vendor?' ('+esc(a.vendor)+')':''}, ${a.n}</option>`).join('');
+  renderQuickApps();
+  const nLib=lib.length,nInst=lib.filter(t=>t.status!=='beispiel').length;
+  $('#note').textContent=`${nInst} installierbare Vorlagen${nInst<nLib?` und ${nLib-nInst} Format-Beispiele`:''}, dazu ${cf.length} Verweise auf die Aagon Community Filebase. Gesucht wird auch in jedem Schritt, Pfad und Skript.`;
+  run(); fromHash();
+}
+function renderQuickApps(){
+  $('#quick-apps').innerHTML='<span class="lbl">Anwendungen</span>'+APPS.slice(0,9).map(a=>
+    `<button type="button" class="qa" data-app="${esc(a.name)}" aria-pressed="${state.app===a.name}">${esc(a.name)} <span class="n">${a.n}</span></button>`).join('');
+}
+
+function hl(text,raw){
+  text=String(text??'');
+  if(!raw.length) return esc(text);
+  const re=new RegExp('('+raw.map(t=>t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','gi');
+  return text.split(re).map((p,ix)=>ix%2?'<mark>'+esc(p)+'</mark>':esc(p)).join('');
+}
+const deco=h=>h.replace(/%[A-Za-z0-9_]+%/g,m=>`<span class="var">${m}</span>`).replace(/\{\{[A-Z0-9_]+\}\}/g,m=>`<span class="ph">${m}</span>`);
+
+function match(i,toks){
+  if(!toks.length) return {score:0,hit:null};
+  let score=0,hit=null;
+  for(const t of toks){
+    if(i._n.includes(t)) score+=10;
+    else if(i._a.includes(t)) score+=9;
+    else if(i._t.includes(t)) score+=6;
+    else if(i._s.includes(t)) score+=3;
+    else {const s=i._st.find(x=>x.t.includes(t)); if(!s) return null; score+=2; hit=hit||s.s;}
+  }
+  if(i._n.startsWith(toks[0])||i._a.startsWith(toks[0])) score+=4;
+  return {score,hit};
+}
+
+function run(){
+  const toks=norm(state.q).split(/\s+/).filter(Boolean);
+  const raw=state.q.trim().split(/\s+/).filter(Boolean);
+  const pre=[]; const srcCount={all:0,lib:0,cf:0};
+  for(const i of ALL){
+    if(state.app&&!i.apps.some(a=>a.name===state.app)) continue;
+    const m=match(i,toks); if(!m) continue;
+    srcCount.all++; srcCount[i.src]++;
+    if(state.src!=='all'&&i.src!==state.src) continue;
+    pre.push({i,...m});
+  }
+  const counts={}; pre.forEach(r=>counts[r.i.cat]=(counts[r.i.cat]||0)+1);
+  let res=state.cat==='Alle'?pre:pre.filter(r=>r.i.cat===state.cat);
+  const libFirst=(a,b)=>(a.i.src===b.i.src?0:a.i.src==='lib'?-1:1);
+  if(state.sort==='new') res.sort((a,b)=>b.i.date.localeCompare(a.i.date));
+  else if(state.sort==='name') res.sort((a,b)=>a.i.name.localeCompare(b.i.name,'de'));
+  else res.sort((a,b)=>(b.score-a.score)||libFirst(a,b)||((b.i.dl||0)-(a.i.dl||0))||b.i.date.localeCompare(a.i.date));
+  renderChips(counts,pre.length); renderSeg(srcCount); renderCards(res,raw);
+  $('#app').value=state.app;
+  document.querySelectorAll('.qa').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.app===state.app)));
+  if(!state.sel) renderDetail();
+  markCurrent();
+}
+function renderChips(counts,total){
+  const all=`<button type="button" class="chip" data-cat="Alle" aria-pressed="${state.cat==='Alle'}">Alle <span class="n">${total}</span></button>`;
+  $('#chips').innerHTML=all+CATS.map(c=>{const n=counts[c]||0;return `<button type="button" class="chip" data-cat="${esc(c)}" aria-pressed="${state.cat===c}" ${n||state.cat===c?'':'disabled'}>${esc(c)} <span class="n">${n}</span></button>`}).join('');
+}
+function renderSeg(sc){
+  const opts=[['all','Alle'],['lib','Vorlagen'],['cf','Filebase']];
+  $('#seg').innerHTML=opts.map(([k,l])=>`<button type="button" data-src="${k}" aria-pressed="${state.src===k}">${l}<span class="n">${sc[k]}</span></button>`).join('');
+}
+function srcBadge(i){
+  if(i.src==='cf') return '<span class="src cf">Filebase</span>';
+  if(i.status==='beispiel') return '<span class="src demo">Beispiel</span>';
+  return i.status==='geprueft'?'<span class="src ok">Geprüft</span>':'<span class="src ok">Installierbar</span>';
+}
+const STATUS_TEXT={beispiel:'Beispiel: zeigt nur das Format, nicht installierbar',entwurf:'Review offen. Vor der Freigabe auf einem Testrechner prüfen.',geprueft:'Geprüft: in mehreren Umgebungen getestet'};
+const REPO='https://github.com/Herzog-GmbH/acmp-ctl';
+const RAW='https://raw.githubusercontent.com/Herzog-GmbH/acmp-ctl/main';
+
+/* Kleines Markdown für description: ### Überschrift, - Liste, 1. Liste, `Code`, **fett**, Absätze */
+function md(text){
+  const inline=s=>esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  const out=[]; let list=null, para=[];
+  const flushP=()=>{if(para.length){out.push('<p>'+inline(para.join(' '))+'</p>');para=[]}};
+  const flushL=()=>{if(list){out.push(`<${list.t}>${list.items.map(x=>'<li>'+inline(x)+'</li>').join('')}</${list.t}>`);list=null}};
+  for(const raw of String(text||'').split(/\r?\n/)){
+    const l=raw.trim(); let m;
+    if(!l){flushP();flushL();continue}
+    if((m=l.match(/^#{1,6}\s+(.*)$/))){flushP();flushL();out.push('<h4>'+inline(m[1])+'</h4>');continue}
+    if((m=l.match(/^[-*]\s+(.*)$/))){flushP();if(!list||list.t!=='ul'){flushL();list={t:'ul',items:[]}}list.items.push(m[1]);continue}
+    if((m=l.match(/^\d+[.)]\s+(.*)$/))){flushP();if(!list||list.t!=='ol'){flushL();list={t:'ol',items:[]}}list.items.push(m[1]);continue}
+    if(list){list.items[list.items.length-1]+=' '+l;continue}
+    para.push(l);
+  }
+  flushP();flushL();
+  return out.join('');
+}
+/* Skripttext eines Schritts (PowerShell, Batch), sonst null */
+function stepCode(s){
+  const f=s.fields||{}; const v=f.BatchLines??f.Batchlines;
+  if(Array.isArray(v)&&v.length) return v.join('\n');
+  if(typeof v==='string'&&v.trim()) return v;
+  return null;
+}
+function renderCards(res,raw){
+  const n=res.length;
+  const parts=[n===1?'1 Treffer':`${nf.format(n)} Treffer`];
+  if(state.q.trim()) parts.push(`für „${esc(state.q.trim())}“`);
+  let extra=state.app?` <button type="button" data-clear-app>Anwendung: ${esc(state.app)} ✕</button>`:'';
+  $('#rescount').innerHTML=`<span>${parts.join(' ')}</span>${extra}`;
+  if(!n){
+    $('#cards').innerHTML=`<div class="empty"><p>Nichts gefunden. Probier einen Begriff aus einem Schritt, etwa einen Dienstnamen, einen Registry-Pfad oder „msiexec“, oder setz die Filter zurück.</p><button type="button" class="btn ghost" id="reset">Filter zurücksetzen</button></div>`;
+    return;
+  }
+  $('#cards').innerHTML=res.map(({i,hit})=>{
+    const meta=i.src==='lib'
+      ?[i.cat,'v'+i.v,i.flat.length+' Schritte',i.author,fmtDate(i.date)]
+      :[i.cat,i.author,fmtDate(i.date),nf.format(i.dl)+' Downloads'].concat(i.cm?[i.cm+(i.cm===1?' Kommentar':' Kommentare')]:[]);
+    const hitHtml=hit?`<p class="hit"><b>Schritt</b>${hl(hit.description||hit.class,raw)}${hit.summary?': '+hl(hit.summary,raw):''}</p>`:'';
+    return `<a class="card" href="#${esc(i.key)}" data-key="${esc(i.key)}">
+      <div class="c-top"><h3>${hl(i.name,raw)}</h3>${srcBadge(i)}</div>
+      <p class="sum">${hl(i.sum,raw)}</p>${hitHtml}${appsHtml(i.apps,false)}
+      <div class="meta">${meta.map(m=>`<span>${esc(m)}</span>`).join('')}</div>${flagHtml(i.flags)}</a>`;
+  }).join('');
+}
+function markCurrent(){document.querySelectorAll('.card').forEach(c=>c.setAttribute('aria-current',c.dataset.key===state.sel?'true':'false'))}
+
+function tree(steps){
+  return `<ol class="tree">${steps.map(s=>{
+    const code=stepCode(s);
+    const codeHtml=code?`<details class="st-code"><summary>Skript anzeigen (${code.split('\n').length} Zeilen)</summary><pre>${deco(esc(code))}</pre></details>`:'';
+    return `<li><div class="st"><span class="dot f-${fam(s.class)}" aria-hidden="true"></span><div class="st-main"><span class="st-d">${deco(esc(s.description||s.class))}</span>${s.summary&&!code?`<span class="st-x">${deco(esc(s.summary))}</span>`:''}${codeHtml}</div><code class="st-c">${esc(s.class)}</code></div>${s.children?tree(s.children):''}</li>`;
+  }).join('')}</ol>`;
+}
+const legend=`<div class="legend"><span><i class="dot f-flow"></i>Ablauf</span><span><i class="dot f-exec"></i>Programme</span><span><i class="dot f-reg"></i>Registry</span><span><i class="dot f-file"></i>Dateien</span><span><i class="dot f-svc"></i>Dienste und Neustart</span><span><i class="dot f-var"></i>Variablen und Hinweise</span></div>`;
+
+const GA='GLOBAL_ACCOUNT';
+function pval(t,name,def){const o=state.params[t.key];return o&&name in o?o[name]:(def??'')}
+function promptText(t){
+  const folder=state.folder.trim()||'<Ordner>';
+  let s=`Installiere aus der ACMP CTL die Vorlage „${t.name}“ (${t.key}@${t.v}) als Entwurf in den Client-Command-Ordner „${folder}“.`;
+  const ps=t.params.map(p=>`${p.name} = „${pval(t,p.name,p.default)}“`);
+  if(t.req.globalAccount) ps.push(`globaler Account = „${pval(t,GA,'')||'<Name>'}“`);
+  if(ps.length) s+=' Werte: '+ps.join(', ')+'.';
+  return s;
+}
+function callText(t){
+  const o={id:t.key,version:t.v,folder:state.folder.trim()||'<Ordner>'};
+  if(t.params.length) o.parameters=Object.fromEntries(t.params.map(p=>[p.name,pval(t,p.name,p.default)]));
+  if(t.req.globalAccount) o.globalAccount=pval(t,GA,'')||'<Name des globalen Accounts>';
+  o.intent=`Vorlage ${t.key} aus der ACMP CTL als Entwurf anlegen`;
+  return 'acmp_lib_install '+JSON.stringify(o,null,2);
+}
+function rawJson(t){
+  const strip=st=>st.map(s=>{const o={...s};if(t.status!=='beispiel'&&o.fields)delete o.summary;if(o.children)o.children=strip(o.children);return o});
+  const {stepCount,flags,...r}=t.raw;
+  return JSON.stringify({...r,steps:strip(r.steps)},null,2);
+}
+
+function renderDetail(){
+  const i=BYKEY[state.sel]; const el=$('#detail');
+  if(!i){el.innerHTML=welcomeHtml();return}
+  const back=`<button type="button" class="back" id="back">← Zur Liste</button>`;
+  if(i.src==='cf'){
+    const url=String(state.entryUrl||'').replace('{id}',i.fid);
+    el.innerHTML=`${back}
+      <div class="dmeta"><span>Aagon Community Filebase</span><span>${esc(i.cat)}</span></div>
+      <h2>${esc(i.name)}</h2><p class="lead">${esc(i.sum)}</p>${appsHtml(i.apps,true)}${flagHtml(i.flags)}
+      <div class="stats"><span>Autor <b>${esc(i.author)}</b></span><span>Stand <b>${fmtDate(i.date)}</b></span><span><b>${nf.format(i.dl)}</b> Downloads</span><span><b>${i.cm}</b> Kommentare</span></div>
+      <div class="cfbox"><h3>Nur als Link verfügbar</h3>
+        <p>Der Export liegt als .sim vor. Die Datei ist verschlüsselt, deshalb sieht man die Schritte erst nach dem Import in die ACMP-Console. Reicht der Autor den Command als Vorlage ein, wird er hier prüf- und installierbar.</p>
+        <a class="btn" href="${esc(url)}" target="_blank" rel="noopener">In der Filebase öffnen ↗</a></div>
+      <div class="sec"><h3>Voraussetzungen</h3>${i.dep.length?`<ul>${i.dep.map(d=>`<li>${esc(d)}</li>`).join('')}</ul>`:'<p class="dmeta">Keine angegeben</p>'}</div>
+      <div class="sec"><h3>Dateien <span class="n">${i.sims.length}</span></h3><table class="ftable"><tbody>${i.sims.map(s=>`<tr><td class="mono">${esc(s)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="sec"><h3>Tags</h3><div class="flags">${i.tags.map(t=>`<span class="flag">${esc(t)}</span>`).join('')}</div></div>`;
+    return;
+  }
+  const r=i.req, notes=[...(r.customFields||[]).map(c=>`Individuelles Feld „${c.name}“${c.type?` (${c.type})`:''}`),...(r.globalAccount?[`Globaler ACMP-Account: ${r.globalAccount}`]:[]),...(r.notes||[])];
+  el.innerHTML=`${back}
+    <div class="dmeta"><span>${esc(i.cat)}</span><span class="v">v${esc(i.v)}</span><span>Stand ${fmtDate(i.date)}</span><span>${esc(i.author)}</span></div>
+    <h2>${esc(i.name)}</h2><p class="lead">${esc(i.sum)}</p>${appsHtml(i.apps,true)}${flagHtml(i.flags)}
+    <p class="status">${srcBadge(i)} ${esc(STATUS_TEXT[i.status]||'')}</p>
+    ${i.raw.description?`<div class="sec"><h3>Beschreibung</h3><div class="desc">${md(i.raw.description)}</div></div>`:''}
+    <div class="install">
+      <h3>Mit eurer KI installieren</h3>
+      ${i.status==='beispiel'?'<p class="notice">Beispielvorlage: Sie zeigt das Format, ihre Schritte haben aber noch keine vollständigen Felder. Installierbar wird sie, sobald sie durch einen echten Export ersetzt ist.</p>':''}
+      <p class="hint">Die KI legt die Vorlage über den ACMP MCP als Entwurf an, nach Zustimmung auf der Freigabe-Seite. Auf Clients läuft nichts, bis ihr den Command freigebt.</p>
+      <div class="fields">
+        <div><label for="inp-folder">Client-Command-Ordner</label><input id="inp-folder" value="${esc(state.folder)}" placeholder="z. B. Wartung"></div>
+        ${i.params.map(p=>`<div><label for="inp-p-${esc(p.name)}"><code>${esc(p.name)}</code></label><input id="inp-p-${esc(p.name)}" data-param="${esc(p.name)}" value="${esc(pval(i,p.name,p.default))}"><div class="pd">${esc(p.description)}</div></div>`).join('')}
+        ${r.globalAccount?`<div><label for="inp-ga">Globaler Account</label><input id="inp-ga" data-param="${GA}" value="${esc(pval(i,GA,''))}" placeholder="Name in ACMP"><div class="pd">${esc(r.globalAccount)}</div></div>`:''}
+      </div>
+      <div class="prompt"><p id="prompt-text">${esc(promptText(i))}</p><button type="button" class="btn" data-copy="prompt-text">Kopieren</button></div>
+      <p class="flow">Die KI prüft die Vorlage, setzt eure Werte ein und stellt eine Freigabe-Anfrage. Nach Zustimmung liegt der Entwurf im Ordner. Freigeben erst nach eurem Test.</p>
+      <details><summary>MCP-Aufruf anzeigen</summary><pre id="call-text">${esc(callText(i))}</pre><div class="row"><button type="button" class="btn ghost" data-copy="call-text">Kopieren</button></div></details>
+    </div>
+    <div class="sec"><h3>Schritte <span class="n">${i.flat.length}</span></h3>${tree(i.steps)}${legend}</div>
+    <div class="sec"><h3>Voraussetzungen</h3>${notes.length?`<ul>${notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:'<p class="dmeta">Keine</p>'}</div>
+    ${i.files.length?`<div class="sec"><h3>Dateien <span class="n">${i.files.length}</span></h3><table class="ftable"><tbody>${i.files.map(f=>`<tr><td class="mono">${esc(f.name)}</td><td class="mono">${f.sha256?'sha256 '+esc(f.sha256.slice(0,8))+'…':'Hash folgt'}</td><td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">Hersteller ↗</a>`:''}</td></tr>`).join('')}</tbody></table></div>`:''}
+    <div class="sec"><h3>Tags</h3><div class="flags">${i.tags.map(t=>`<span class="flag">${esc(t)}</span>`).join('')}</div>
+      <details><summary>template.json ansehen</summary><pre>${esc(rawJson(i))}</pre></details>
+      <div class="links"><a class="btn ghost" href="${RAW}/templates/${encodeURIComponent(i.key)}/template.json" target="_blank" rel="noopener">template.json herunterladen ↗</a><a class="btn ghost" href="${REPO}/tree/main/templates/${encodeURIComponent(i.key)}" target="_blank" rel="noopener">Auf GitHub ↗</a></div></div>`;
+}
+function welcomeHtml(){
+  const lib=ALL.filter(x=>x.src==='lib'&&x.status!=='beispiel');
+  const newest=[...lib].sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name,'de')).slice(0,6);
+  return `<div class="welcome">
+    <h2>Vorlage wählen</h2>
+    <p class="lead">Links eine Vorlage anklicken. Hier stehen dann alle Schritte, Skripte und Voraussetzungen.</p>
+    <dl>
+      <div><dt>Finden</dt><dd>Sucht nach Anwendung, Aufgabe, Dienst oder Registry-Pfad. Gesucht wird auch in jedem Schritt.</dd></div>
+      <div><dt>Prüfen</dt><dd>Jeder Schritt steht samt Skript im Klartext. Keine verschlüsselte .sim-Datei, keine Kennwörter, keine internen Namen.</dd></div>
+      <div><dt>Installieren lassen</dt><dd>Eure KI legt den Command über den ACMP MCP als Entwurf an. Freigegeben wird erst nach eurem Test.</dd></div>
+    </dl>
+    ${newest.length?`<div class="sec newest"><h3>Zuletzt aktualisiert</h3>${newest.map(t=>`<a href="#${esc(t.key)}">${esc(t.name)}<span>${esc(t.cat)}, ${fmtDate(t.date)}</span></a>`).join('')}</div>`:''}
+  </div>`;
+}
+function refreshInstall(){
+  const i=BYKEY[state.sel]; if(!i||i.src!=='lib') return;
+  const p=$('#prompt-text'),c=$('#call-text');
+  if(p) p.textContent=promptText(i);
+  if(c) c.textContent=callText(i);
+}
+
+function openDetail(key){
+  state.sel=key; renderDetail(); markCurrent();
+  $('#detail').scrollTop=0;
+  if(!mqWide.matches) document.body.classList.add('show-detail');
+}
+function closeDetail(){document.body.classList.remove('show-detail')}
+function leaveDetail(){try{if(location.hash) history.replaceState(null,'',location.pathname+location.search)}catch(e){}closeDetail()}
+function fromHash(){
+  let k=''; try{k=decodeURIComponent(location.hash.slice(1))}catch(e){}
+  if(BYKEY[k]) openDetail(k); else closeDetail();
+}
+function setApp(name){state.app=state.app===name?'':name;state.cat='Alle';leaveDetail();run();$('#cards').scrollIntoView({block:'start',behavior:'smooth'})}
+
+$('#q').addEventListener('input',e=>{state.q=e.target.value;run()});
+$('#sort').addEventListener('change',e=>{state.sort=e.target.value;run()});
+$('#app').addEventListener('change',e=>{state.app=e.target.value;run()});
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button,a'); if(!t) return;
+  if(t.dataset.cat){state.cat=state.cat===t.dataset.cat&&t.dataset.cat!=='Alle'?'Alle':t.dataset.cat;run()}
+  else if(t.dataset.src){state.src=t.dataset.src;run()}
+  else if(t.dataset.app){setApp(t.dataset.app)}
+  else if('clearApp' in t.dataset){state.app='';run()}
+  else if(t.dataset.q){$('#q').value=t.dataset.q;state.q=t.dataset.q;state.cat='Alle';run();$('#q').focus()}
+  else if(t.id==='reset'){state.q='';state.cat='Alle';state.src='all';state.app='';$('#q').value='';run()}
+  else if(t.id==='back'){leaveDetail()}
+  else if(t.dataset.copy){
+    const src=document.getElementById(t.dataset.copy); const txt=src?src.textContent:'';
+    const done=m=>{const o=t.textContent;t.textContent=m;setTimeout(()=>t.textContent=o,1600)};
+    try{navigator.clipboard.writeText(txt).then(()=>done('Kopiert'),()=>{selectText(src);done('Markiert')})}
+    catch(err){selectText(src);done('Markiert')}
+  }
+});
+function selectText(node){if(!node)return;const r=document.createRange();r.selectNodeContents(node);const s=window.getSelection();s.removeAllRanges();s.addRange(r)}
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.id==='inp-folder'){state.folder=t.value;try{localStorage.setItem('ctl-folder',t.value)}catch(err){}refreshInstall()}
+  else if(t.dataset.param){const i=BYKEY[state.sel];(state.params[i.key]=state.params[i.key]||{})[t.dataset.param]=t.value;refreshInstall()}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='/'&&!/input|textarea|select/i.test(document.activeElement?.tagName||'')){e.preventDefault();$('#q').focus()}
+  else if(e.key==='Escape'){
+    if(document.body.classList.contains('show-detail')) leaveDetail();
+    else if(document.activeElement===$('#q')&&state.q){$('#q').value='';state.q='';run()}
+  }
+});
+window.addEventListener('hashchange',fromHash);
+mqWide.addEventListener?.('change',()=>{if(mqWide.matches) closeDetail()});
+
+fetch('index.json',{cache:'no-cache'}).then(r=>{if(!r.ok) throw new Error(r.status);return r.json()}).then(load).catch(err=>{
+  $('#note').textContent='';
+  $('#cards').innerHTML=`<div class="empty"><p>Die Vorlagen konnten nicht geladen werden (index.json, ${esc(err.message)}). Lokal zuerst <code>node tools/build.mjs</code> ausführen und die Seite über einen Webserver öffnen, nicht per Doppelklick.</p></div>`;
+});
+</script>

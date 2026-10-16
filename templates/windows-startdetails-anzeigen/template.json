@@ -1,0 +1,67 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "windows-startdetails-anzeigen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Windows: ausführliche Statusmeldungen beim Start anzeigen",
+  "summary": "Schaltet die ausführlichen Statusmeldungen (VerboseStatus) ein. Windows zeigt dann beim Starten, An- und Abmelden und Herunterfahren, was gerade passiert, etwa „Gruppenrichtlinien werden angewendet“. Hilft bei der Suche nach langsamen Starts.",
+  "description": "## So funktioniert es\nSetzt den Richtlinienwert `VerboseStatus` = 1 (DWORD) unter `HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System`. Das entspricht der Gruppenrichtlinie „Sehr ausführliche vs. normale Statusmeldungen anzeigen“.\n\n## Ergebnis/Exitcodes\n- Ab dem nächsten Start oder der nächsten Anmeldung zeigt Windows die Detailmeldungen.\n- Der Schritt meldet nur dann einen Fehler, wenn der Wert nicht geschrieben werden konnte.\n\n## Hinweise\n- Rückgängig: denselben Wert auf 0 setzen oder löschen.\n- Setzt eine Gruppenrichtlinie den Wert, überschreibt sie diese Einstellung bei der nächsten Aktualisierung.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Windows-Einstellungen",
+  "tags": [
+    "VerboseStatus",
+    "Registry",
+    "Anmeldung",
+    "Systemstart",
+    "Fehlersuche"
+  ],
+  "applications": [
+    {
+      "name": "Windows",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM) und schreibt nach HKEY_LOCAL_MACHINE. Kein Neustart nötig, die Meldungen erscheinen beim nächsten Start oder bei der nächsten Anmeldung."
+    ]
+  },
+  "variables": [],
+  "steps": [
+    {
+      "class": "TModifyReg",
+      "description": "VerboseStatus = 1 setzen (HKLM, DWORD)",
+      "fields": {
+        "_DataVersion": "2",
+        "ActionForExisting": "0",
+        "Rootkey": "2147483650",
+        "Key": "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System",
+        "Valuename": "VerboseStatus",
+        "ValueType": "2",
+        "NewValue": "1",
+        "Binary_Use_Memo": "True",
+        "Binary_Memo_Text": "",
+        "Multi_SZ_Values": "",
+        "Binary_Load_From_File": "False",
+        "Binary_File_Name": "",
+        "Use64BitRegistry": "True",
+        "CalcOption": "coDez"
+      }
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,190 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "bitlocker-status",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "BitLocker-Status inventarisieren",
+  "summary": "Liest Schutzstatus, Verschlüsselungszustand, Verfahren und Schlüsselschutz des Systemlaufwerks und speichert sie als eine Zeile im individuellen Feld „BitLockerStatus“. So lässt sich der Stand der ganzen Flotte in ACMP abfragen.",
+  "description": "### So funktioniert es\n1. PowerShell liest mit `Get-BitLockerVolume` das Systemlaufwerk und schreibt eine Zeile in `BITLOCKER_STATUS`.\n2. „Wert auf Server speichern“ legt die Zeile im individuellen Feld `BitLockerStatus` ab.\n3. Konnte der Status nicht gelesen werden, endet der Command mit Fehler. Das Feld enthält dann den Fehlertext.\n\n### Ergebnis\nAufbau des Feldes: `Schutz | Zustand | Verfahren | Schlüsselschutz`. Die Werte sind die englischen Namen aus Windows, damit Abfragen und Filter einfach bleiben.\n- `On | FullyEncrypted | XtsAes256 | RecoveryPassword, Tpm` verschlüsselt und geschützt\n- `Off | FullyEncrypted | XtsAes128 | Tpm` verschlüsselt, Schutz angehalten\n- `Off | FullyDecrypted | None | -` nicht verschlüsselt\n- `On | EncryptionInProgress 40/100 | XtsAes256 | Tpm` Verschlüsselung läuft\n- `NotSupported` BitLocker gibt es auf diesem Windows nicht\n- `Error: …` Status nicht lesbar (Exitcode 1)\n\n### Hinweise\n- Für eine Auswertung über die Flotte den Command als wiederkehrenden Job einplanen und in einer Abfrage nach `BitLockerStatus` filtern, z. B. „beginnt nicht mit On“.\n- Wiederherstellungsschlüssel liest der Command bewusst nicht aus.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Sicherheit",
+  "tags": [
+    "BitLocker",
+    "Verschlüsselung",
+    "Inventar",
+    "individuelles Feld",
+    "Audit"
+  ],
+  "applications": [
+    {
+      "name": "BitLocker",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [
+      {
+        "name": "BitLockerStatus",
+        "type": "Text",
+        "maxLength": 100,
+        "table": "Attribute",
+        "folder": "Client Info"
+      }
+    ],
+    "globalAccount": null,
+    "notes": [
+      "Das individuelle Feld „BitLockerStatus“ (Text, 100 Zeichen) muss vor der Installation existieren, z. B. unter Client Info → Attribute. Feld- und Tabellen-IDs setzt die Installation ein.",
+      "Läuft als SYSTEM und liest nur. Kein Neustart.",
+      "Geprüft wird nur das Systemlaufwerk (meist C:)."
+    ]
+  },
+  "variables": [
+    {
+      "name": "BITLOCKER_STATUS",
+      "value": ""
+    },
+    {
+      "name": "BITLOCKER_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "BitLocker-Status des Systemlaufwerks lesen (PowerShell)",
+      "summary": "Get-BitLockerVolume -MountPoint $env:SystemDrive → eine Zeile in BITLOCKER_STATUS",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM, nur lesend. Ausgabe in BITLOCKER_STATUS: Schutz | Zustand | Verfahren | Schlüsselschutz, oder NotSupported, oder Error: <Text>. Rückgabe in BITLOCKER_EXITCODE: 0 gelesen, 1 Fehler.",
+        "BatchLines": [
+          "# BitLocker-Status des Systemlaufwerks lesen",
+          "# ACMP CTL, Vorlage bitlocker-status. Laeuft als SYSTEM (64-Bit-PowerShell), nur lesend.",
+          "# Keine Prozentzeichen verwenden: ACMP ersetzt sie durch Projektvariablen.",
+          "#",
+          "# Ausgabe (eine Zeile, landet in BITLOCKER_STATUS und danach im individuellen Feld):",
+          "#   <Schutz> | <Zustand> | <Verfahren> | <Schluesselschutz>",
+          "#   z. B. \"On | FullyEncrypted | XtsAes256 | RecoveryPassword, Tpm\"",
+          "#   Zustand waehrend der Ver- oder Entschluesselung mit Fortschritt, z. B. \"EncryptionInProgress 40/100\"",
+          "#   \"NotSupported\"   BitLocker gibt es auf diesem Windows nicht",
+          "#   \"Error: <Text>\"  Status nicht lesbar",
+          "# Rueckgabe: 0 gelesen (auch NotSupported), 1 Fehler",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "$maxLaenge = 100",
+          "",
+          "function Ausgabe([string]$text) {",
+          "    if ($text.Length -gt $maxLaenge) { $text = $text.Substring(0, $maxLaenge) }",
+          "    [Console]::Out.WriteLine($text)",
+          "}",
+          "trap { Ausgabe ('Error: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "if (-not (Get-Command -Name Get-BitLockerVolume -ErrorAction SilentlyContinue)) {",
+          "    Ausgabe 'NotSupported'",
+          "    exit 0",
+          "}",
+          "try {",
+          "    $vol = Get-BitLockerVolume -MountPoint $env:SystemDrive -ErrorAction Stop",
+          "} catch {",
+          "    $fehler = $_.Exception.Message",
+          "    $klasse = $null",
+          "    try {",
+          "        $klasse = Get-CimInstance -Namespace 'root\\cimv2\\Security\\MicrosoftVolumeEncryption' -ClassName Win32_EncryptableVolume -ErrorAction Stop",
+          "    } catch { }",
+          "    if (-not $klasse) { Ausgabe 'NotSupported'; exit 0 }",
+          "    Ausgabe ('Error: ' + $fehler)",
+          "    exit 1",
+          "}",
+          "",
+          "$zustand = [string]$vol.VolumeStatus",
+          "if ($zustand -notin @('FullyEncrypted', 'FullyDecrypted')) {",
+          "    $zustand = $zustand + ' ' + [int]$vol.EncryptionPercentage + '/100'",
+          "}",
+          "$verfahren = [string]$vol.EncryptionMethod",
+          "if (-not $verfahren) { $verfahren = '-' }",
+          "$schutzArten = @($vol.KeyProtector | ForEach-Object { [string]$_.KeyProtectorType } | Sort-Object -Unique)",
+          "$schutzText = $(if ($schutzArten.Count -gt 0) { $schutzArten -join ', ' } else { '-' })",
+          "",
+          "Ausgabe (([string]$vol.ProtectionStatus, $zustand, $verfahren, $schutzText) -join ' | ')",
+          "exit 0"
+        ],
+        "ExitCode": "BITLOCKER_EXITCODE",
+        "OutputLines": "BITLOCKER_STATUS",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TStoreValueOnACMPServer",
+      "description": "BitLocker-Status im Feld „BitLockerStatus“ speichern",
+      "fields": {
+        "_DataVersion": "2",
+        "Tablename": "{{CF:BitLockerStatus:Tablename}}",
+        "Fieldname": "{{CF:BitLockerStatus:Fieldname}}",
+        "FieldDisplayName": "BitLockerStatus",
+        "FieldType": "1",
+        "FieldID": "{{CF:BitLockerStatus:FieldID}}",
+        "Value": "%BITLOCKER_STATUS%",
+        "TableType": "0",
+        "TableDisplayName": "Attribute",
+        "TableID": "{{CF:BitLockerStatus:TableID}}",
+        "Tablenames": "",
+        "Fieldnames": "",
+        "FieldDisplayNames": "",
+        "FieldTypes": "",
+        "FieldIDs": "",
+        "Values": "",
+        "TableTypes": "",
+        "TableDisplayNames": "",
+        "TableIds": "",
+        "FolderTypes": "",
+        "FolderNames": "",
+        "FolderGuids": "",
+        "ClientID": "",
+        "ClearPreviousValues": "False",
+        "StoreMultiValue": "False",
+        "StoredCustomFields": "{\"StoredCustomFields\":[{\"Id\":\"{{CF:BitLockerStatus:FieldID}}\",\"ParentId\":\"{{CF:BitLockerStatus:TableID}}\",\"DisplayName_en\":\"BitLockerStatus\",\"DisplayName_de\":\"BitLockerStatus\",\"IsMultiField\":false,\"InputMethod\":\"imText\",\"MaxLength\":100,\"FieldHeight\":0,\"RangeMin\":0,\"RangeMax\":0,\"DecimalPlaces\":0,\"HasRange\":false}]}",
+        "StoredTables": "{\"StoredTables\":[{\"Id\":\"{{CF:BitLockerStatus:TableID}}\",\"ParentId\":\"{{CF:BitLockerStatus:FolderID}}\",\"DisplayName\":\"Attribute\",\"IsMultiTable\":false}]}",
+        "StoredFolders": "{\"StoredFolders\":[{\"Id\":\"{{CF:BitLockerStatus:FolderID}}\",\"ParentId\":\"{{CF:BitLockerStatus:FolderParentID}}\",\"DisplayName\":\"Client Info\"}]}"
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn das Skript einen Fehler meldet",
+      "fields": {
+        "Value_1": "%BITLOCKER_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "BitLocker-Status nicht lesbar: %BITLOCKER_STATUS%"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

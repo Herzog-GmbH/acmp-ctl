@@ -1,0 +1,228 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "registry-wert-setzen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Registry-Wert setzen",
+  "summary": "Baustein: setzt einen Registry-Wert unter HKLM oder HKCU mit beliebigem Typ (String, ExpandString, DWord, QWord, MultiString). Legt fehlende Schlüssel an, ändert nur bei Abweichung und prüft das Ergebnis.",
+  "description": "### So funktioniert es\n1. Das Skript vereinheitlicht den Schlüssel (`HKLM\\…`, `HKEY_LOCAL_MACHINE\\…` und `HKLM:\\…` sind gleichwertig) und prüft Typ und Wert.\n2. Hat der Wert schon denselben Typ und Inhalt, ändert es nichts.\n3. Sonst legt es fehlende Schlüssel an, setzt den Wert und liest ihn zur Kontrolle zurück.\n\n### Ergebnis und Exitcodes\nDer Exitcode steht in `REG_EXITCODE`. Ist er nicht 0, endet der Command mit Fehler.\n- `0` gesetzt oder schon richtig\n- `2` Parameter ungültig (Schlüssel, Typ oder Zahl)\n- `1` sonstiger Fehler\n\n### Hinweise\n- ACMP ersetzt Prozentzeichen durch Variablen. Umgebungsvariablen deshalb als `[[Name]]` schreiben: Aus `[[SystemRoot]]\\System32` wird `%SystemRoot%\\System32`. Sinnvoll vor allem mit `ExpandString`.\n- DWord-Werte über 2147483647 (z. B. `0xFFFFFFFF`) werden korrekt geschrieben.\n- Alle Parameter sind Projektvariablen. Für mehrere Werte den Schritt im Command kopieren und die Werte direkt im Skript eintragen oder weitere Variablen anlegen.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Baukasten",
+  "tags": [
+    "Registry",
+    "HKLM",
+    "REG_SZ",
+    "REG_DWORD",
+    "Parameter"
+  ],
+  "applications": [
+    {
+      "name": "Windows-Registry",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "SCHLUESSEL",
+      "description": "Schlüssel mit Stamm, z. B. HKLM\\SOFTWARE\\Firma\\Programm. Erlaubt sind HKLM und HKCU.",
+      "required": true
+    },
+    {
+      "name": "WERTNAME",
+      "description": "Name des Werts.",
+      "required": true
+    },
+    {
+      "name": "WERT",
+      "description": "Inhalt. DWord und QWord dezimal oder mit 0x, MultiString-Einträge mit | trennen, Umgebungsvariablen als [[Name]] schreiben, z. B. [[ProgramFiles]]\\Tool.",
+      "default": ""
+    },
+    {
+      "name": "WERTTYP",
+      "description": "String, ExpandString, DWord, QWord oder MultiString (auch REG_SZ, REG_DWORD usw.).",
+      "default": "String"
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als SYSTEM in 64-Bit-PowerShell. Werte für 32-Bit-Programme liegen unter HKLM\\SOFTWARE\\WOW6432Node\\…",
+      "HKCU ist unter SYSTEM der Zweig des SYSTEM-Kontos. Für Benutzereinstellungen im Schritt „Ausführen als“ auf den angemeldeten Benutzer stellen.",
+      "Kein Neustart. Ob ein Programm den Wert sofort liest, hängt vom Programm ab."
+    ]
+  },
+  "variables": [
+    {
+      "name": "SCHLUESSEL",
+      "value": "{{SCHLUESSEL}}"
+    },
+    {
+      "name": "WERTNAME",
+      "value": "{{WERTNAME}}"
+    },
+    {
+      "name": "WERT",
+      "value": "{{WERT}}"
+    },
+    {
+      "name": "WERTTYP",
+      "value": "{{WERTTYP}}"
+    },
+    {
+      "name": "REG_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Registry-Wert setzen und kontrollieren (PowerShell)",
+      "summary": "Schlüssel anlegen, Wert mit Typ setzen (nur bei Abweichung), Wert zur Kontrolle zurücklesen",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in REG_EXITCODE: 0 gesetzt oder schon richtig, 2 Parameter ungültig, 1 sonstiger Fehler.",
+        "BatchLines": [
+          "# Registry-Wert setzen (Baustein)",
+          "# ACMP CTL, Vorlage registry-wert-setzen. Laeuft als SYSTEM (64-Bit-PowerShell).",
+          "# Keine Prozentzeichen verwenden: ACMP ersetzt sie durch Projektvariablen.",
+          "# Gewollt ersetzt werden nur SCHLUESSEL, WERTNAME, WERT und WERTTYP.",
+          "#",
+          "# SCHLUESSEL  HKLM\\... oder HKCU\\... (auch HKEY_LOCAL_MACHINE\\... oder HKLM:\\...)",
+          "#             32-Bit-Programme lesen unter HKLM\\SOFTWARE\\WOW6432Node\\...",
+          "# WERTTYP     String, ExpandString, DWord, QWord, MultiString (auch REG_SZ, REG_DWORD usw.)",
+          "# WERT        DWord/QWord dezimal oder hexadezimal mit 0x. MultiString: Eintraege mit | trennen.",
+          "#             Umgebungsvariablen als [[Name]] schreiben, z. B. [[SystemRoot]]\\System32.",
+          "#             Das Skript macht daraus die uebliche Schreibweise mit Prozentzeichen.",
+          "#",
+          "# Rueckgabe: 0 gesetzt oder schon richtig, 2 Parameter ungueltig, 1 sonstiger Fehler",
+          "",
+          "$schluesselText = (@'",
+          "%SCHLUESSEL%",
+          "'@).Trim()",
+          "$wertName = (@'",
+          "%WERTNAME%",
+          "'@).Trim()",
+          "$wertText = (@'",
+          "%WERT%",
+          "'@) -replace '^[\\r\\n]+|[\\r\\n]+$', ''",
+          "$typText = '%WERTTYP%'.Trim()",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "function Melde([string]$text) { [Console]::Out.WriteLine($text) }",
+          "function Abbruch([int]$code, [string]$text) { Melde ('FEHLER ' + $code + ': ' + $text); exit $code }",
+          "trap { Melde ('FEHLER 1: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "# Schluessel vereinheitlichen",
+          "$pfad = $schluesselText.Trim('\"').TrimEnd('\\')",
+          "$pfad = $pfad -replace '^(HKEY_LOCAL_MACHINE|HKLM:?)\\\\', 'HKLM:\\'",
+          "$pfad = $pfad -replace '^(HKEY_CURRENT_USER|HKCU:?)\\\\', 'HKCU:\\'",
+          "if ($pfad -notmatch '^HK(LM|CU):\\\\[^\\\\]') { Abbruch 2 ('SCHLUESSEL muss mit HKLM\\ oder HKCU\\ beginnen, ist: ' + $schluesselText) }",
+          "if (-not $wertName) { Abbruch 2 'WERTNAME ist leer.' }",
+          "",
+          "$typen = @{",
+          "    'string' = 'String'; 'reg_sz' = 'String'",
+          "    'expandstring' = 'ExpandString'; 'reg_expand_sz' = 'ExpandString'",
+          "    'dword' = 'DWord'; 'reg_dword' = 'DWord'",
+          "    'qword' = 'QWord'; 'reg_qword' = 'QWord'",
+          "    'multistring' = 'MultiString'; 'reg_multi_sz' = 'MultiString'",
+          "}",
+          "if (-not $typText) { $typText = 'String' }",
+          "$typ = $typen[$typText.ToLower()]",
+          "if (-not $typ) { Abbruch 2 ('WERTTYP unbekannt: ' + $typText + ' (String, ExpandString, DWord, QWord, MultiString)') }",
+          "",
+          "# [[Name]] -> Umgebungsvariable mit Prozentzeichen",
+          "$pz = [string][char]37",
+          "$wertText = $wertText -replace '\\[\\[([A-Za-z0-9_()]+)\\]\\]', ($pz + '$1' + $pz)",
+          "",
+          "function Zahl([string]$text, [bool]$lang) {",
+          "    $t = $text.Trim()",
+          "    $u = [UInt64]0",
+          "    try {",
+          "        if ($t -match '^0x[0-9a-fA-F]+$') { $u = [Convert]::ToUInt64($t.Substring(2), 16) } else { $u = [UInt64]::Parse($t) }",
+          "    } catch { Abbruch 2 ('WERT ist keine gueltige Zahl: ' + $text) }",
+          "    if ($lang) { return [BitConverter]::ToInt64([BitConverter]::GetBytes([UInt64]$u), 0) }",
+          "    if ($u -gt [UInt32]::MaxValue) { Abbruch 2 ('WERT ist zu gross fuer DWord: ' + $text) }",
+          "    return [BitConverter]::ToInt32([BitConverter]::GetBytes([UInt32]$u), 0)",
+          "}",
+          "switch ($typ) {",
+          "    'DWord'       { $wert = Zahl $wertText $false }",
+          "    'QWord'       { $wert = Zahl $wertText $true }",
+          "    'MultiString' { $wert = [string[]]@($wertText -split '\\|') }",
+          "    default       { $wert = [string]$wertText }",
+          "}",
+          "",
+          "if ($pfad -like 'HKCU:*' -and [Security.Principal.WindowsIdentity]::GetCurrent().IsSystem) {",
+          "    Melde 'HINWEIS: HKCU ist unter SYSTEM der Zweig des SYSTEM-Kontos. Fuer Benutzer den Schritt als Benutzer ausfuehren.'",
+          "}",
+          "",
+          "# Schon richtig?",
+          "if (Test-Path -LiteralPath $pfad) {",
+          "    $k = Get-Item -LiteralPath $pfad",
+          "    if ($k.GetValueNames() -contains $wertName) {",
+          "        $altTyp = [string]$k.GetValueKind($wertName)",
+          "        $alt = $k.GetValue($wertName, $null, 'DoNotExpandEnvironmentNames')",
+          "        $gleich = $false",
+          "        if ($altTyp -eq $typ) {",
+          "            if ($typ -eq 'MultiString') { $gleich = ((@($alt) -join \"`n\") -ceq (@($wert) -join \"`n\")) }",
+          "            else { $gleich = ([string]$alt -ceq [string]$wert) }",
+          "        }",
+          "        if ($gleich) { Melde ('Unveraendert: ' + $pfad + ' ' + $wertName + ' (' + $typ + ')'); exit 0 }",
+          "        Melde ('Bisher: ' + $altTyp + ' = ' + (@($alt) -join ' | '))",
+          "    }",
+          "} else {",
+          "    New-Item -Path $pfad -Force | Out-Null",
+          "    Melde ('Schluessel angelegt: ' + $pfad)",
+          "}",
+          "",
+          "New-ItemProperty -LiteralPath $pfad -Name $wertName -Value $wert -PropertyType $typ -Force | Out-Null",
+          "$neu = (Get-Item -LiteralPath $pfad).GetValue($wertName, $null, 'DoNotExpandEnvironmentNames')",
+          "Melde ('Gesetzt: ' + $pfad + ' ' + $wertName + ' (' + $typ + ') = ' + (@($neu) -join ' | '))",
+          "exit 0"
+        ],
+        "ExitCode": "REG_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn das Skript einen Fehler meldet",
+      "fields": {
+        "Value_1": "%REG_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "Registry-Wert nicht gesetzt, Code %REG_EXITCODE% (siehe Protokoll des PowerShell-Schritts)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

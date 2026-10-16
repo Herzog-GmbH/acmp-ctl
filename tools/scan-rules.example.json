@@ -1,0 +1,11 @@
+{
+  "_hinweis": "Als tools/scan-rules.local.json kopieren und anpassen. Die Datei wird nicht eingecheckt, damit eure internen Namen nicht im Repo landen.",
+  "patterns": [
+    { "regex": "\\bmeinefirma\\b", "flags": "i", "hint": "Firmenname" },
+    { "regex": "\\bsrv-[a-z0-9]+\\b", "flags": "i", "hint": "Servername" },
+    { "regex": "\\bPC-\\d{3,}\\b", "flags": "i", "hint": "Rechnername" }
+  ],
+  "replace": [
+    { "find": "\\\\fileserver\\install$", "param": "INSTALL_FREIGABE", "description": "Freigabe mit den Installationsdateien" }
+  ]
+}

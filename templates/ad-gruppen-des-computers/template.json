@@ -1,0 +1,168 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "ad-gruppen-des-computers",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "AD-Gruppen des Computers auslesen",
+  "summary": "Liest die AD-Gruppen des Computerkontos per LDAP aus und speichert sie kommagetrennt im Feld „ComputerADGruppen“. Läuft als SYSTEM mit dem Computerkonto. Domäne und Domänencontroller ermittelt Windows selbst.",
+  "description": "### So funktioniert es\n1. Ist der Client kein Domänenmitglied, lautet das Ergebnis `(kein AD-Mitglied)`.\n2. Sonst sucht ein `DirectorySearcher` das eigene Computerkonto (`sAMAccountName` = Computername + `$`) und liest `memberOf`. Als SYSTEM meldet sich Windows dabei mit dem Computerkonto an. `whoami /groups` hilft hier nicht, es zeigt nur die Gruppen des SYSTEM-Kontos.\n3. Aus den DNs bleibt der Gruppenname (CN), sortiert und kommagetrennt.\n4. Nur bei Exitcode 0 speichert der Command den Text im Feld „ComputerADGruppen“.\n\n### Ergebnis und Exitcodes\n- Beispiel: `GG-Drucker-EG, GG-Software-7zip, WSUS-Ring-1`.\n- `(keine)`: Das Konto ist nur in seiner primären Gruppe, meist „Domänencomputer“.\n- Lange Listen kürzt das Skript an einem Komma auf 250 Zeichen und hängt ` ...` an.\n- `0`: gelesen, das Feld wird gespeichert. `1`: Fehler, z. B. kein DC erreichbar. Das Feld bleibt dann unverändert. Die Meldung steht im Schritt-Protokoll und in der Variable `COMPUTER_AD_GRUPPEN`, der Exitcode in `COMPUTER_AD_GRUPPEN_EXIT`.\n\n### Hinweise\n- Es sind die direkten Gruppen. Verschachtelte Gruppen und die primäre Gruppe stehen nicht in der Liste.\n- Das Ergebnis zeigt den Stand im AD. Das Kerberos-Ticket des Computers kennt neue Gruppen erst nach einem Neustart.\n- Für die LDAP-Suche gilt ein Zeitlimit von 60 Sekunden.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Inventar",
+  "tags": [
+    "Active Directory",
+    "LDAP",
+    "Gruppen",
+    "Computerkonto",
+    "memberOf",
+    "individuelles Feld"
+  ],
+  "applications": [
+    {
+      "name": "Active Directory",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [
+      {
+        "name": "ComputerADGruppen",
+        "type": "Text",
+        "maxLength": 250,
+        "table": "Attribute",
+        "folder": "Client Info"
+      }
+    ],
+    "globalAccount": null,
+    "notes": [
+      "Das individuelle Feld „ComputerADGruppen“ (Text, 250 Zeichen) muss vor der Installation unter Client Info → Attribute existieren. Bezeichnung DE und EN genau „ComputerADGruppen“, ohne Leerzeichen. Feld- und Tabellen-IDs setzt die Installation ein.",
+      "Läuft als Dienst (SYSTEM). Das Computerkonto liest sein eigenes AD-Objekt, das darf es standardmäßig.",
+      "Der Client muss einen Domänencontroller erreichen, im Netz oder per VPN. Sonst bleibt der alte Wert im Feld stehen."
+    ]
+  },
+  "variables": [
+    {
+      "name": "COMPUTER_AD_GRUPPEN",
+      "value": ""
+    },
+    {
+      "name": "COMPUTER_AD_GRUPPEN_EXIT",
+      "value": ""
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "AD-Gruppen des Computerkontos per LDAP lesen",
+      "fields": {
+        "BatchLines": [
+          "# Direkte AD-Gruppen des Computerkontos per LDAP lesen (Attribut memberOf)",
+          "# Läuft als SYSTEM und meldet sich damit als Computerkonto an. Domäne und DC ermittelt Windows selbst.",
+          "# Ausgabe: Gruppennamen (CN) kommagetrennt, gekürzt auf $max Zeichen (= Feldlänge)",
+          "# Exitcode: 0 = gelesen (auch \"(kein AD-Mitglied)\"), 1 = Fehler, z. B. kein DC erreichbar",
+          "$max = 250",
+          "try {",
+          "    if (-not (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).PartOfDomain) {",
+          "        Write-Output '(kein AD-Mitglied)'",
+          "        exit 0",
+          "    }",
+          "    $sucher = New-Object System.DirectoryServices.DirectorySearcher",
+          "    $sucher.Filter = '(&(objectCategory=computer)(sAMAccountName=' + $env:COMPUTERNAME + '$))'",
+          "    $sucher.ClientTimeout = [TimeSpan]::FromSeconds(60)",
+          "    [void]$sucher.PropertiesToLoad.Add('memberOf')",
+          "    $treffer = $sucher.FindOne()",
+          "    if (-not $treffer) { throw ('Computerkonto ' + $env:COMPUTERNAME + ' im AD nicht gefunden') }",
+          "}",
+          "catch {",
+          "    $text = 'Fehler: ' + $_.Exception.Message",
+          "    if ($text.Length -gt $max) { $text = $text.Substring(0, $max) }",
+          "    Write-Output $text",
+          "    exit 1",
+          "}",
+          "$gruppen = @($treffer.Properties['memberof'] | ForEach-Object {",
+          "    if ([string]$_ -match '^CN=((?:\\\\.|[^,\\\\])+)') { $Matches[1] -replace '\\\\(.)', '$1' }",
+          "})",
+          "$liste = ($gruppen | Sort-Object -Unique) -join ', '",
+          "if (-not $liste) { $liste = '(keine)' }",
+          "if ($liste.Length -gt $max) {",
+          "    $kurz = $liste.Substring(0, $max - 4)",
+          "    $pos = $kurz.LastIndexOf(', ')",
+          "    if ($pos -gt 0) { $kurz = $kurz.Substring(0, $pos) }",
+          "    $liste = $kurz + ' ...'",
+          "}",
+          "Write-Output $liste",
+          "exit 0"
+        ],
+        "ExitCode": "COMPUTER_AD_GRUPPEN_EXIT",
+        "OutputLines": "COMPUTER_AD_GRUPPEN",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Nur bei Erfolg speichern (Exitcode 0)",
+      "fields": {
+        "Value_1": "%COMPUTER_AD_GRUPPEN_EXIT%",
+        "Value_2": "0",
+        "Operator": "=",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TStoreValueOnACMPServer",
+          "description": "Ergebnis im Feld „ComputerADGruppen“ speichern",
+          "fields": {
+            "_DataVersion": "2",
+            "Tablename": "{{CF:ComputerADGruppen:Tablename}}",
+            "Fieldname": "{{CF:ComputerADGruppen:Fieldname}}",
+            "FieldDisplayName": "ComputerADGruppen",
+            "FieldType": "1",
+            "FieldID": "{{CF:ComputerADGruppen:FieldID}}",
+            "Value": "%COMPUTER_AD_GRUPPEN%",
+            "TableType": "0",
+            "TableDisplayName": "Attribute",
+            "TableID": "{{CF:ComputerADGruppen:TableID}}",
+            "Tablenames": "",
+            "Fieldnames": "",
+            "FieldDisplayNames": "",
+            "FieldTypes": "",
+            "FieldIDs": "",
+            "Values": "",
+            "TableTypes": "",
+            "TableDisplayNames": "",
+            "TableIds": "",
+            "FolderTypes": "",
+            "FolderNames": "",
+            "FolderGuids": "",
+            "ClientID": "",
+            "ClearPreviousValues": "False",
+            "StoreMultiValue": "False",
+            "StoredCustomFields": "{\"StoredCustomFields\":[{\"Id\":\"{{CF:ComputerADGruppen:FieldID}}\",\"ParentId\":\"{{CF:ComputerADGruppen:TableID}}\",\"DisplayName_en\":\"ComputerADGruppen\",\"DisplayName_de\":\"ComputerADGruppen\",\"IsMultiField\":false,\"InputMethod\":\"imText\",\"MaxLength\":250,\"FieldHeight\":0,\"RangeMin\":0,\"RangeMax\":0,\"DecimalPlaces\":0,\"HasRange\":false}]}",
+            "StoredTables": "{\"StoredTables\":[{\"Id\":\"{{CF:ComputerADGruppen:TableID}}\",\"ParentId\":\"{{CF:ComputerADGruppen:FolderID}}\",\"DisplayName\":\"Attribute\",\"IsMultiTable\":false}]}",
+            "StoredFolders": "{\"StoredFolders\":[{\"Id\":\"{{CF:ComputerADGruppen:FolderID}}\",\"ParentId\":\"{{CF:ComputerADGruppen:FolderParentID}}\",\"DisplayName\":\"Client Info\"}]}"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

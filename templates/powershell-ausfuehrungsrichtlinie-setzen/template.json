@@ -1,0 +1,242 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "powershell-ausfuehrungsrichtlinie-setzen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "PowerShell-Ausführungsrichtlinie per Richtlinie setzen",
+  "summary": "Setzt die Ausführungsrichtlinie von Windows PowerShell für den ganzen Rechner wie die Gruppenrichtlinie „Skriptausführung aktivieren“: AllSigned, RemoteSigned oder Restricted. Mit NichtKonfiguriert entfernt der Command die Einstellung wieder.",
+  "description": "### So funktioniert es\nDie Schritte schreiben dieselben Werte wie die Gruppenrichtlinie „Skriptausführung aktivieren“ unter `HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell`. Es sind reine Registry-Schritte ohne PowerShell. So lässt sich die Einstellung auch dann zurücknehmen, wenn Skripte gesperrt sind.\n1. Restricted: `EnableScripts` = 0, `ExecutionPolicy` wird gelöscht.\n2. NichtKonfiguriert: `EnableScripts` und `ExecutionPolicy` werden gelöscht. Dann gilt wieder die lokale Einstellung (`Set-ExecutionPolicy`).\n3. AllSigned oder RemoteSigned: `EnableScripts` = 1 und `ExecutionPolicy` = gewählter Wert.\n4. Jeder andere Wert beendet den Command mit Fehler, ohne etwas zu ändern.\n\n### Ergebnis\n- `Get-ExecutionPolicy -List` zeigt den Wert danach im Bereich MachinePolicy. Er gilt sofort für jede neue PowerShell-Sitzung, ohne Neustart.\n\n### Hinweise\n- MachinePolicy hat Vorrang vor `-ExecutionPolicy Bypass` beim Aufruf. Mit AllSigned oder Restricted laufen unsignierte Skripte nicht mehr, möglicherweise auch die PowerShell-Schritte anderer ACMP-Commands. Vorher auf einem Testrechner prüfen.\n- Setzt eine Domänen-GPO denselben Wert, überschreibt sie diesen Command bei der nächsten Aktualisierung.\n- PowerShell 7 hat eine eigene Richtlinie unter `HKLM\\SOFTWARE\\Policies\\Microsoft\\PowerShellCore`. Dieser Command setzt nur Windows PowerShell.\n- Die Ausführungsrichtlinie ist keine Sicherheitsgrenze. Sie verhindert versehentliches Ausführen, keine gezielte Umgehung.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Windows-Einstellungen",
+  "tags": [
+    "PowerShell",
+    "ExecutionPolicy",
+    "Ausführungsrichtlinie",
+    "Gruppenrichtlinie",
+    "Registry",
+    "Härtung"
+  ],
+  "applications": [
+    {
+      "name": "Windows PowerShell 5.1",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "RICHTLINIE",
+      "description": "AllSigned, RemoteSigned, Restricted oder NichtKonfiguriert (entfernt die Einstellung).",
+      "default": "RemoteSigned",
+      "required": true
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM), nur Registry-Schritte. Kein Neustart.",
+      "Der Wert steht als Projektvariable PS_RICHTLINIE im Command und lässt sich in der Console ändern."
+    ]
+  },
+  "variables": [
+    {
+      "name": "PS_RICHTLINIE",
+      "value": "{{RICHTLINIE}}"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TActionIf",
+      "description": "Wenn Restricted gewählt ist",
+      "summary": "PS_RICHTLINIE = Restricted",
+      "fields": {
+        "Value_1": "%PS_RICHTLINIE%",
+        "Value_2": "Restricted",
+        "Operator": "=",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TModifyReg",
+          "description": "Skriptausführung abschalten (EnableScripts = 0)",
+          "summary": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell → EnableScripts = 0 (DWORD)",
+          "fields": {
+            "_DataVersion": "2",
+            "ActionForExisting": "0",
+            "Rootkey": "2147483650",
+            "Key": "\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell",
+            "Valuename": "EnableScripts",
+            "ValueType": "2",
+            "NewValue": "0",
+            "Binary_Use_Memo": "False",
+            "Binary_Memo_Text": "",
+            "Multi_SZ_Values": "",
+            "Binary_Load_From_File": "False",
+            "Binary_File_Name": "",
+            "Use64BitRegistry": "True",
+            "CalcOption": "coDez"
+          }
+        },
+        {
+          "class": "TDeleteRegistryValue",
+          "description": "ExecutionPolicy löschen",
+          "summary": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell → ExecutionPolicy löschen",
+          "fields": {
+            "Registry_key": "\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell",
+            "Rootkey": "2147483650",
+            "Registry_value": "ExecutionPolicy",
+            "Delete_key": "False",
+            "Use64BitRegistry": "True",
+            "FailIfNoKeyOrValueAffected": "False"
+          }
+        }
+      ]
+    },
+    {
+      "class": "TActionElse",
+      "description": "Sonst",
+      "fields": {},
+      "children": [
+        {
+          "class": "TActionIf",
+          "description": "Wenn NichtKonfiguriert gewählt ist",
+          "summary": "PS_RICHTLINIE = NichtKonfiguriert",
+          "fields": {
+            "Value_1": "%PS_RICHTLINIE%",
+            "Value_2": "NichtKonfiguriert",
+            "Operator": "=",
+            "CaseSensitive": "False",
+            "DigitsAsNumbers": "False"
+          },
+          "children": [
+            {
+              "class": "TDeleteRegistryValue",
+              "description": "EnableScripts löschen",
+              "summary": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell → EnableScripts löschen",
+              "fields": {
+                "Registry_key": "\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell",
+                "Rootkey": "2147483650",
+                "Registry_value": "EnableScripts",
+                "Delete_key": "False",
+                "Use64BitRegistry": "True",
+                "FailIfNoKeyOrValueAffected": "False"
+              }
+            },
+            {
+              "class": "TDeleteRegistryValue",
+              "description": "ExecutionPolicy löschen",
+              "summary": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell → ExecutionPolicy löschen",
+              "fields": {
+                "Registry_key": "\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell",
+                "Rootkey": "2147483650",
+                "Registry_value": "ExecutionPolicy",
+                "Delete_key": "False",
+                "Use64BitRegistry": "True",
+                "FailIfNoKeyOrValueAffected": "False"
+              }
+            }
+          ]
+        },
+        {
+          "class": "TActionElse",
+          "description": "Sonst",
+          "fields": {},
+          "children": [
+            {
+              "class": "TActionIf",
+              "description": "Wenn nicht AllSigned",
+              "summary": "PS_RICHTLINIE ≠ AllSigned",
+              "fields": {
+                "Value_1": "%PS_RICHTLINIE%",
+                "Value_2": "AllSigned",
+                "Operator": "<>",
+                "CaseSensitive": "False",
+                "DigitsAsNumbers": "False"
+              },
+              "children": [
+                {
+                  "class": "TActionIf",
+                  "description": "und nicht RemoteSigned",
+                  "summary": "PS_RICHTLINIE ≠ RemoteSigned",
+                  "fields": {
+                    "Value_1": "%PS_RICHTLINIE%",
+                    "Value_2": "RemoteSigned",
+                    "Operator": "<>",
+                    "CaseSensitive": "False",
+                    "DigitsAsNumbers": "False"
+                  },
+                  "children": [
+                    {
+                      "class": "TActionExitScript",
+                      "description": "Ungültigen Wert ablehnen",
+                      "summary": "Ergebnis: Fehler",
+                      "fields": {
+                        "Result": "1",
+                        "Reason": "Ungültige Ausführungsrichtlinie „%PS_RICHTLINIE%“. Erlaubt: AllSigned, RemoteSigned, Restricted, NichtKonfiguriert."
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "class": "TModifyReg",
+              "description": "Skriptausführung einschalten (EnableScripts = 1)",
+              "summary": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell → EnableScripts = 1 (DWORD)",
+              "fields": {
+                "_DataVersion": "2",
+                "ActionForExisting": "0",
+                "Rootkey": "2147483650",
+                "Key": "\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell",
+                "Valuename": "EnableScripts",
+                "ValueType": "2",
+                "NewValue": "1",
+                "Binary_Use_Memo": "False",
+                "Binary_Memo_Text": "",
+                "Multi_SZ_Values": "",
+                "Binary_Load_From_File": "False",
+                "Binary_File_Name": "",
+                "Use64BitRegistry": "True",
+                "CalcOption": "coDez"
+              }
+            },
+            {
+              "class": "TModifyReg",
+              "description": "ExecutionPolicy setzen",
+              "summary": "HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell → ExecutionPolicy = %PS_RICHTLINIE% (REG_SZ)",
+              "fields": {
+                "_DataVersion": "2",
+                "ActionForExisting": "0",
+                "Rootkey": "2147483650",
+                "Key": "\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell",
+                "Valuename": "ExecutionPolicy",
+                "ValueType": "0",
+                "NewValue": "%PS_RICHTLINIE%",
+                "Binary_Use_Memo": "False",
+                "Binary_Memo_Text": "",
+                "Multi_SZ_Values": "",
+                "Binary_Load_From_File": "False",
+                "Binary_File_Name": "",
+                "Use64BitRegistry": "True",
+                "CalcOption": "coDez"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "files": []
+}

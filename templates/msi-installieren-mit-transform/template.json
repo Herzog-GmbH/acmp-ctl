@@ -1,0 +1,244 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "msi-installieren-mit-transform",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "MSI mit Transform installieren",
+  "summary": "Baustein für eigene Softwarepakete: installiert ein MSI von einer Freigabe oder einem lokalen Pfad still, auf Wunsch mit Transform (MST) und weiteren Eigenschaften. Ist das Produkt schon installiert, passiert nichts. Exitcodes wie 3010 und 1618 werden sauber ausgewertet.",
+  "description": "### So funktioniert es\n1. MSI und Transforms prüfen. Transforms ohne Pfad sucht das Skript im Ordner des MSI.\n2. ProductCode, Name und Version aus dem MSI lesen. Ist der ProductCode schon installiert, endet der Command ohne Änderung.\n3. `msiexec /i \"<MSI>\" TRANSFORMS=\"<MST>\" <MSI_EIGENSCHAFTEN> /qn /norestart /l*v \"<Protokoll>\"` ausführen.\n4. Der Exitcode steht in `MSI_EXITCODE`. Bei allem außer 0 und 3010 endet der Command mit Fehler.\n\n### Ergebnis und Exitcodes\n- `0` installiert oder schon vorhanden\n- `3010` installiert, Neustart nötig (auch für 1641)\n- `10` MSI nicht gefunden oder kein Zugriff\n- `11` Transform nicht gefunden oder kein Zugriff\n- `12` MSI nicht lesbar\n- `1603` schwerer Fehler bei der Installation (Protokoll lesen)\n- `1618` eine andere Installation läuft gerade, später erneut versuchen\n- `1638` eine andere Version des Produkts ist installiert\n- andere Werte: Exitcode von msiexec\n\nProtokoll: `C:\\Windows\\Temp\\acmp-msi-<Dateiname>.log`\n\n### Hinweise\n- Als Baustein gedacht: Command kopieren, Parameter setzen, fertig. Die Parameter sind Projektvariablen und lassen sich später in der Console ändern.\n- Für eine Aktualisierung muss das neue MSI einen eigenen ProductCode haben (Major Upgrade). Sonst meldet der Command „bereits installiert“.\n- Prozentzeichen in Pfaden oder Eigenschaften nicht verwenden, ACMP ersetzt sie als Variablen.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Baukasten",
+  "tags": [
+    "MSI",
+    "msiexec",
+    "MST",
+    "Transform",
+    "Exitcode",
+    "Softwareverteilung"
+  ],
+  "applications": [
+    {
+      "name": "Windows Installer (MSI)",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "MSI_PFAD",
+      "description": "Vollständiger Pfad zur MSI-Datei, lokal oder als UNC-Pfad, z. B. \\\\<Server>\\<Freigabe>\\Paket\\Paket.msi",
+      "required": true
+    },
+    {
+      "name": "MST_PFAD",
+      "description": "Optional: Transform-Datei(en). Ohne Pfad wird im Ordner des MSI gesucht, mehrere mit Semikolon trennen. Leer = ohne Transform.",
+      "default": ""
+    },
+    {
+      "name": "MSI_EIGENSCHAFTEN",
+      "description": "Optional: weitere MSI-Eigenschaften, z. B. ALLUSERS=1 oder INSTALLDIR=\"C:\\Programme\\Paket\". Leer = keine.",
+      "default": ""
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als SYSTEM. Bei einem UNC-Pfad greift das Computerkonto auf die Freigabe zu. Freigabe und Ordner brauchen deshalb Leserecht für „Domänencomputer“.",
+      "Kein Neustart. Meldet das MSI 3010, ist ein Neustart nötig. Den löst ihr bei Bedarf selbst aus, z. B. mit der Vorlage „Neustart ankündigen und ausführen“.",
+      "MSI und Transform werden direkt vom Pfad installiert, nicht kopiert. So funktionieren auch Pakete mit externen CAB-Dateien."
+    ]
+  },
+  "variables": [
+    {
+      "name": "MSI_PFAD",
+      "value": "{{MSI_PFAD}}"
+    },
+    {
+      "name": "MST_PFAD",
+      "value": "{{MST_PFAD}}"
+    },
+    {
+      "name": "MSI_EIGENSCHAFTEN",
+      "value": "{{MSI_EIGENSCHAFTEN}}"
+    },
+    {
+      "name": "MSI_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "MSI mit Transform still installieren (PowerShell)",
+      "summary": "MSI und MST prüfen, ProductCode lesen (schon installiert? dann fertig), msiexec /i … TRANSFORMS=… /qn /norestart /l*v",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in MSI_EXITCODE: 0 installiert oder vorhanden, 3010 Neustart nötig, 10/11/12 MSI oder MST nicht erreichbar oder lesbar, sonst Exitcode von msiexec. Protokoll: C:\\Windows\\Temp\\acmp-msi-<Dateiname>.log",
+        "BatchLines": [
+          "# MSI-Paket mit optionalem Transform (MST) still installieren",
+          "# ACMP CTL, Vorlage msi-installieren-mit-transform. Laeuft als SYSTEM (64-Bit-PowerShell).",
+          "# Keine Prozentzeichen verwenden: ACMP ersetzt sie durch Projektvariablen.",
+          "# Gewollt ersetzt werden nur MSI_PFAD, MST_PFAD und MSI_EIGENSCHAFTEN.",
+          "#",
+          "# Ablauf:",
+          "#  1. MSI und Transforms pruefen. Bei UNC-Pfaden greift das Computerkonto zu (Leserecht noetig).",
+          "#     Transforms ohne Pfad werden im Ordner des MSI gesucht, mehrere mit ; trennen.",
+          "#  2. ProductCode, Name und Version aus dem MSI lesen. Ist der ProductCode schon installiert: fertig.",
+          "#  3. msiexec /i <MSI> TRANSFORMS=<MST> <MSI_EIGENSCHAFTEN> /qn /norestart /l*v <Protokoll>",
+          "#",
+          "# Rueckgabe: 0     installiert oder schon vorhanden",
+          "#            3010  installiert, Neustart noetig (1641 wird ebenfalls als 3010 gemeldet)",
+          "#            10    MSI nicht gefunden oder kein Zugriff",
+          "#            11    Transform nicht gefunden oder kein Zugriff",
+          "#            12    MSI nicht lesbar",
+          "#            sonst der Exitcode von msiexec, z. B. 1603 schwerer Fehler, 1618 andere Installation laeuft,",
+          "#            1638 andere Version des Produkts ist installiert",
+          "#            1     sonstiger Fehler",
+          "# Protokoll: C:\\Windows\\Temp\\acmp-msi-<Dateiname>.log",
+          "",
+          "$msiPfad = (@'",
+          "%MSI_PFAD%",
+          "'@).Trim().Trim('\"')",
+          "$mstText = (@'",
+          "%MST_PFAD%",
+          "'@).Trim()",
+          "$eigenschaften = (@'",
+          "%MSI_EIGENSCHAFTEN%",
+          "'@).Trim()",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "function Melde([string]$text) { [Console]::Out.WriteLine($text) }",
+          "function Abbruch([int]$code, [string]$text) { Melde ('FEHLER ' + $code + ': ' + $text); exit $code }",
+          "trap { Melde ('FEHLER 1: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "# Eigenschaften aus der Property-Tabelle eines MSI lesen",
+          "function MsiEigenschaften([string]$pfad, [string[]]$namen) {",
+          "    $ergebnis = @{}",
+          "    $installer = New-Object -ComObject WindowsInstaller.Installer",
+          "    $db = $installer.GetType().InvokeMember('OpenDatabase', 'InvokeMethod', $null, $installer, @($pfad, 0))",
+          "    foreach ($name in $namen) {",
+          "        $sql = \"SELECT Value FROM Property WHERE Property = '\" + $name + \"'\"",
+          "        $view = $db.GetType().InvokeMember('OpenView', 'InvokeMethod', $null, $db, @($sql))",
+          "        [void]$view.GetType().InvokeMember('Execute', 'InvokeMethod', $null, $view, $null)",
+          "        $satz = $view.GetType().InvokeMember('Fetch', 'InvokeMethod', $null, $view, $null)",
+          "        $ergebnis[$name] = $null",
+          "        if ($satz) {",
+          "            $ergebnis[$name] = [string]$satz.GetType().InvokeMember('StringData', 'GetProperty', $null, $satz, @(1))",
+          "            [void][Runtime.InteropServices.Marshal]::ReleaseComObject($satz)",
+          "        }",
+          "        [void]$view.GetType().InvokeMember('Close', 'InvokeMethod', $null, $view, $null)",
+          "        [void][Runtime.InteropServices.Marshal]::ReleaseComObject($view)",
+          "    }",
+          "    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($db)",
+          "    [void][Runtime.InteropServices.Marshal]::ReleaseComObject($installer)",
+          "    return $ergebnis",
+          "}",
+          "",
+          "# 1. Dateien pruefen",
+          "if (-not $msiPfad) { Abbruch 10 'MSI_PFAD ist leer.' }",
+          "if (-not (Test-Path -LiteralPath $msiPfad -PathType Leaf)) { Abbruch 10 ('MSI nicht gefunden oder kein Zugriff: ' + $msiPfad) }",
+          "$msiOrdner = Split-Path -Parent $msiPfad",
+          "$transforms = @()",
+          "foreach ($t in ($mstText -split ';')) {",
+          "    $t = $t.Trim().Trim('\"')",
+          "    if (-not $t) { continue }",
+          "    if (-not [IO.Path]::IsPathRooted($t)) { $t = Join-Path $msiOrdner $t }",
+          "    if (-not (Test-Path -LiteralPath $t -PathType Leaf)) { Abbruch 11 ('Transform nicht gefunden oder kein Zugriff: ' + $t) }",
+          "    $transforms += $t",
+          "}",
+          "",
+          "# 2. Produkt lesen, schon installiert?",
+          "try { $info = MsiEigenschaften $msiPfad @('ProductCode', 'ProductName', 'ProductVersion') }",
+          "catch { Abbruch 12 ('MSI nicht lesbar: ' + $_.Exception.Message) }",
+          "$produktCode = [string]$info['ProductCode']",
+          "Melde ('Paket: ' + $info['ProductName'] + ' ' + $info['ProductVersion'] + ' ' + $produktCode)",
+          "if ($transforms.Count -gt 0) { Melde ('Transforms: ' + ($transforms -join '; ')) }",
+          "if ($produktCode) {",
+          "    foreach ($zweig in @('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall',",
+          "                         'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall')) {",
+          "        $schluessel = Join-Path $zweig $produktCode",
+          "        if (Test-Path -LiteralPath $schluessel) {",
+          "            $da = Get-ItemProperty -LiteralPath $schluessel",
+          "            Melde ('Bereits installiert: ' + $da.DisplayName + ' ' + $da.DisplayVersion + '. Nichts zu tun.')",
+          "            exit 0",
+          "        }",
+          "    }",
+          "}",
+          "",
+          "# 3. Installieren",
+          "$log = Join-Path $env:windir ('Temp\\acmp-msi-' + [IO.Path]::GetFileNameWithoutExtension($msiPfad) + '.log')",
+          "$argumente = '/i \"' + $msiPfad + '\"'",
+          "if ($transforms.Count -gt 0) { $argumente += ' TRANSFORMS=\"' + ($transforms -join ';') + '\"' }",
+          "if ($eigenschaften) { $argumente += ' ' + $eigenschaften }",
+          "$argumente += ' /qn /norestart /l*v \"' + $log + '\"'",
+          "Melde ('msiexec ' + $argumente)",
+          "$p = Start-Process -FilePath (Join-Path $env:windir 'System32\\msiexec.exe') -ArgumentList $argumente -Wait -PassThru",
+          "if ($null -eq $p.ExitCode) { Abbruch 1 'Exitcode von msiexec nicht lesbar.' }",
+          "$code = [int]$p.ExitCode",
+          "switch ($code) {",
+          "    0       { Melde 'Installation erfolgreich.'; exit 0 }",
+          "    3010    { Melde 'Installation erfolgreich, Neustart noetig.'; exit 3010 }",
+          "    1641    { Melde 'Installation erfolgreich, Windows hat einen Neustart angestossen.'; exit 3010 }",
+          "    1618    { Abbruch 1618 'Eine andere Installation laeuft gerade. Spaeter erneut versuchen.' }",
+          "    default { Abbruch $code ('msiexec meldet ' + $code + '. Protokoll: ' + $log) }",
+          "}"
+        ],
+        "ExitCode": "MSI_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn msiexec nicht 0 meldet",
+      "fields": {
+        "Value_1": "%MSI_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionIf",
+          "description": "und nicht 3010 (Neustart nötig)",
+          "fields": {
+            "Value_1": "%MSI_EXITCODE%",
+            "Value_2": "3010",
+            "Operator": "<>",
+            "CaseSensitive": "False",
+            "DigitsAsNumbers": "False"
+          },
+          "children": [
+            {
+              "class": "TActionExitScript",
+              "description": "Command mit Fehler beenden",
+              "fields": {
+                "Result": "1",
+                "Reason": "MSI-Installation fehlgeschlagen, Code %MSI_EXITCODE%, Protokoll C:\\Windows\\Temp\\acmp-msi-*.log"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,67 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "citrix-prelaunch-abschalten",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Citrix Workspace: Sitzungsvorstart (PreLaunch) abschalten",
+  "summary": "Schaltet den Sitzungsvorstart der Citrix Workspace-App ab. Die App baut dann nach der Anmeldung keine Sitzung auf Vorrat mehr auf. Das spart Lizenzen und Serverlast und vermeidet unerwartete Sitzungen.",
+  "description": "## So funktioniert es\nSetzt `EnablePreLaunch` = `false` (REG_SZ) unter `HKLM\\SOFTWARE\\WOW6432Node\\Citrix\\Dazzle`. Dort liest die Citrix Workspace-App die Einstellung für den Self-Service-Vorstart.\n\n## Ergebnis/Exitcodes\n- Die Einstellung gilt ab dem nächsten Start der Workspace-App bzw. der nächsten Anmeldung.\n- Der Schritt meldet nur dann einen Fehler, wenn der Wert nicht geschrieben werden konnte.\n\n## Hinweise\n- Rückgängig: Wert auf `true` setzen oder löschen.\n- Die Vorlage nutzt den Pfad der 32-Bit-Workspace-App. Bei neueren 64-Bit-Versionen vorher in der Citrix-Dokumentation prüfen, ob der Pfad gleich geblieben ist.\n- Eine Citrix-ADMX-Richtlinie oder Store-Einstellung auf dem StoreFront-Server kann diese Einstellung übersteuern.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Software",
+  "tags": [
+    "Citrix",
+    "Workspace",
+    "PreLaunch",
+    "Registry",
+    "HKLM"
+  ],
+  "applications": [
+    {
+      "name": "Citrix Workspace",
+      "vendor": "Citrix"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM) und schreibt nach HKEY_LOCAL_MACHINE. Die Citrix Workspace-App muss nicht laufen, kein Neustart nötig."
+    ]
+  },
+  "variables": [],
+  "steps": [
+    {
+      "class": "TModifyReg",
+      "description": "EnablePreLaunch = false setzen (HKLM, REG_SZ)",
+      "fields": {
+        "_DataVersion": "2",
+        "ActionForExisting": "0",
+        "Rootkey": "2147483650",
+        "Key": "SOFTWARE\\WOW6432Node\\Citrix\\Dazzle",
+        "Valuename": "EnablePreLaunch",
+        "ValueType": "0",
+        "NewValue": "false",
+        "Binary_Use_Memo": "True",
+        "Binary_Memo_Text": "",
+        "Multi_SZ_Values": "",
+        "Binary_Load_From_File": "False",
+        "Binary_File_Name": "",
+        "Use64BitRegistry": "True",
+        "CalcOption": "coDez"
+      }
+    }
+  ],
+  "files": []
+}

@@ -1,0 +1,194 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "windows-benachrichtigung-anzeigen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Windows-Benachrichtigung an den Benutzer",
+  "summary": "Zeigt dem angemeldeten Benutzer eine Windows-Benachrichtigung (Toast) mit eigenem Titel, Text und Absender. Nutzt nur Windows-Bordmittel, kein Modul aus dem Internet.",
+  "description": "### So funktioniert es\n1. Der Schritt läuft als angemeldeter Benutzer. Läuft er als SYSTEM, endet er mit Code 3.\n2. Ist ein Absender gesetzt, registriert das Skript im Benutzerprofil die App-Kennung `ACMP.CTL.Benachrichtigung` mit diesem Anzeigenamen (`HKCU\\Software\\Classes\\AppUserModelId`). Ohne Absender meldet sich Windows PowerShell.\n3. Mit den Windows-Runtime-Klassen `ToastNotificationManager` und `XmlDocument` baut es die Benachrichtigung und zeigt sie an. Titel und Text werden dabei für XML maskiert.\n4. Sind Benachrichtigungen für den Benutzer oder per Richtlinie abgeschaltet, meldet das Skript den Grund.\n\n### Ergebnis und Exitcodes\n- Exitcode in `TOAST_EXITCODE`: `0` an Windows übergeben. `1` Fehler. `3` lief nicht als Benutzer. `4` Benachrichtigungen abgeschaltet.\n- Bei einem Exitcode ungleich 0 beendet sich der Command mit Fehler.\n\n### Hinweise\n- Die Benachrichtigung bleibt etwa 25 Sekunden sichtbar und liegt danach in der Mitteilungszentrale.\n- Bei „Nicht stören“ oder im Vollbild legt Windows sie nur in die Mitteilungszentrale.\n- Code 0 heißt: Windows hat die Benachrichtigung angenommen. Ob der Benutzer sie gelesen hat, weiß der Command nicht. Für eine Bestätigung eignet sich der ACMP-Schritt „Dialoge“.\n- Titel, Text und Absender stehen als Projektvariablen im Command und lassen sich in der Console ändern.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Benutzerhinweise",
+  "tags": [
+    "Benachrichtigung",
+    "Toast",
+    "Hinweis",
+    "Benutzer",
+    "Information",
+    "Benutzerkontext"
+  ],
+  "applications": [
+    {
+      "name": "Windows-Benachrichtigungen",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "TITEL",
+      "description": "Erste, fett gedruckte Zeile der Benachrichtigung.",
+      "default": "Hinweis der IT"
+    },
+    {
+      "name": "TEXT",
+      "description": "Text der Benachrichtigung, eine Zeile. Kein Prozentzeichen verwenden.",
+      "default": "Bitte starten Sie Ihren PC heute vor Feierabend neu, damit Updates abgeschlossen werden."
+    },
+    {
+      "name": "ABSENDER",
+      "description": "Name, der als Absender erscheint. Leer = Windows PowerShell.",
+      "default": "IT-Service"
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Der PowerShell-Schritt läuft als angemeldeter Benutzer (Ausführen als: Benutzer, ohne erhöhte Rechte).",
+      "Ein Benutzer muss angemeldet sein. Windows 10 oder 11 mit Windows PowerShell 5.1.",
+      "Mit Absender legt der Schritt im Benutzerprofil den Schlüssel HKCU\\Software\\Classes\\AppUserModelId\\ACMP.CTL.Benachrichtigung an."
+    ]
+  },
+  "variables": [
+    {
+      "name": "TOAST_TITEL",
+      "value": "{{TITEL}}"
+    },
+    {
+      "name": "TOAST_TEXT",
+      "value": "{{TEXT}}"
+    },
+    {
+      "name": "TOAST_ABSENDER",
+      "value": "{{ABSENDER}}"
+    },
+    {
+      "name": "TOAST_EXITCODE",
+      "value": "0"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Benachrichtigung anzeigen (als Benutzer)",
+      "summary": "Toast mit TOAST_TITEL und TOAST_TEXT über ToastNotificationManager, Absender TOAST_ABSENDER",
+      "fields": {
+        "isSystem": "False",
+        "_CommandComment": "Läuft als angemeldeter Benutzer. Rückgabe in TOAST_EXITCODE: 0 übergeben; 1 Fehler; 3 lief als SYSTEM; 4 Benachrichtigungen aus.",
+        "BatchLines": [
+          "# Windows-Benachrichtigung (Toast) an den angemeldeten Benutzer. Laeuft als angemeldeter Benutzer, nur Windows-Bordmittel.",
+          "# Rueckgabe in TOAST_EXITCODE: 0 = an Windows uebergeben, 1 = Fehler, 3 = laeuft nicht als Benutzer, 4 = Benachrichtigungen abgeschaltet",
+          "# Keine Prozentzeichen im Code: ACMP ersetzt sie durch Variablen.",
+          "",
+          "function Repariere-Text([string]$s) {",
+          "    # Falls das Skript als UTF-8 geschrieben und als ANSI gelesen wurde: Umlaute zurueckwandeln",
+          "    if ($s -notmatch ('[' + [char]0x00C2 + '-' + [char]0x00F4 + ']')) { return $s }",
+          "    try {",
+          "        $neu = (New-Object System.Text.UTF8Encoding -ArgumentList $false, $true).GetString([Text.Encoding]::Default.GetBytes($s))",
+          "        if ($neu.Length -lt $s.Length) { return $neu }",
+          "    } catch { }",
+          "    return $s",
+          "}",
+          "",
+          "$ich = [Security.Principal.WindowsIdentity]::GetCurrent()",
+          "if ($ich.IsSystem) {",
+          "    Write-Output 'FEHLER: Schritt laeuft als SYSTEM. In ACMP \"Ausfuehren als: Benutzer\" waehlen.'",
+          "    exit 3",
+          "}",
+          "$titel = @'",
+          "%TOAST_TITEL%",
+          "'@",
+          "$text = @'",
+          "%TOAST_TEXT%",
+          "'@",
+          "$absender = @'",
+          "%TOAST_ABSENDER%",
+          "'@",
+          "$titel = (Repariere-Text $titel).Trim()",
+          "$text = (Repariere-Text $text).Trim()",
+          "$absender = (Repariere-Text $absender).Trim()",
+          "if (-not $titel -and -not $text) {",
+          "    Write-Output 'FEHLER: Titel und Text sind leer.'",
+          "    exit 1",
+          "}",
+          "",
+          "try {",
+          "    # Ohne Absender meldet sich Windows PowerShell. Mit Absender wird eine eigene App-Kennung",
+          "    # im Benutzerprofil registriert (HKCU), deren Anzeigename in der Benachrichtigung steht.",
+          "    $appId = '{1AC14E77-02E7-4E5D-B744-2EB1AE5198B7}\\WindowsPowerShell\\v1.0\\powershell.exe'",
+          "    if ($absender) {",
+          "        $appId = 'ACMP.CTL.Benachrichtigung'",
+          "        $schluessel = 'HKCU:\\Software\\Classes\\AppUserModelId\\' + $appId",
+          "        if (-not (Test-Path -LiteralPath $schluessel)) { New-Item -Path $schluessel -Force | Out-Null }",
+          "        New-ItemProperty -LiteralPath $schluessel -Name 'DisplayName' -Value $absender -PropertyType String -Force | Out-Null",
+          "        New-ItemProperty -LiteralPath $schluessel -Name 'ShowInSettings' -Value 0 -PropertyType DWord -Force | Out-Null",
+          "    }",
+          "",
+          "    [void][Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime]",
+          "    [void][Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime]",
+          "    $xmlText = '<toast duration=\"long\"><visual><binding template=\"ToastGeneric\"><text>' + [Security.SecurityElement]::Escape($titel) +",
+          "        '</text><text>' + [Security.SecurityElement]::Escape($text) + '</text></binding></visual></toast>'",
+          "    $xml = New-Object Windows.Data.Xml.Dom.XmlDocument",
+          "    $xml.LoadXml($xmlText)",
+          "    $notifier = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier($appId)",
+          "    $einstellung = [string]$notifier.Setting",
+          "    if ($einstellung -and $einstellung -ne 'Enabled') {",
+          "        Write-Output ('Benachrichtigungen sind fuer ' + $ich.Name + ' nicht erlaubt: ' + $einstellung)",
+          "        exit 4",
+          "    }",
+          "    $notifier.Show((New-Object Windows.UI.Notifications.ToastNotification -ArgumentList $xml))",
+          "    Write-Output ('Benachrichtigung an ' + $ich.Name + ' uebergeben: ' + $titel)",
+          "    exit 0",
+          "} catch {",
+          "    Write-Output ('FEHLER: ' + $_.Exception.Message)",
+          "    exit 1",
+          "}"
+        ],
+        "ExitCode": "TOAST_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn die Benachrichtigung nicht angezeigt wurde",
+      "summary": "TOAST_EXITCODE ungleich 0",
+      "fields": {
+        "Value_1": "%TOAST_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "summary": "Ergebnis: Fehler",
+          "fields": {
+            "Result": "1",
+            "Reason": "Benachrichtigung nicht angezeigt, Code %TOAST_EXITCODE% (1 = Fehler, 3 = lief nicht als Benutzer, 4 = Benachrichtigungen abgeschaltet)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

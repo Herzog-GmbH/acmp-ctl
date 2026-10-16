@@ -1,0 +1,162 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "windows-version-auslesen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Windows-Version auslesen",
+  "summary": "Liest Edition, Version (z. B. 24H2), Build und UBR aus und speichert alles als einen Text im Feld „WindowsVersion“, z. B. Windows 11 Pro 24H2 (26100.4061). So seht ihr den genauen Patchstand auf einen Blick.",
+  "description": "### So funktioniert es\n1. Die Edition kommt aus `Win32_OperatingSystem.Caption` ohne „Microsoft“, z. B. `Windows 11 Pro`. `ProductName` in der Registry nennt bei Windows 11 noch „Windows 10“. Das Skript nimmt es nur als Ersatz und korrigiert es ab Build 22000.\n2. `DisplayVersion`, `CurrentBuildNumber` und `UBR` kommen aus `HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion`. Ältere Systeme ohne `DisplayVersion` liefern `ReleaseId` (z. B. `1809`).\n3. Der zweite Schritt speichert den Text im Feld „WindowsVersion“.\n\n### Ergebnis und Exitcodes\n- Beispiele: `Windows 11 Pro 24H2 (26100.4061)`, `Windows Server 2019 Standard 1809 (17763.7009)`.\n- `0`: gelesen. `1`: Fehler, im Feld steht `Fehler: …`. Der Exitcode steht in der Variable `WINDOWS_VERSION_TEXT_EXIT`.\n\n### Hinweise\n- Die UBR ändert sich mit jedem kumulativen Update. Damit zeigt das Feld den Patchstand.\n- ACMP inventarisiert das Betriebssystem auch selbst. Das Feld fasst die Werte in einem Text zusammen, den man gut filtern und exportieren kann.\n- Die Edition steht so im Feld, wie Windows sie meldet.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Inventar",
+  "tags": [
+    "Windows 11",
+    "Windows 10",
+    "Build",
+    "UBR",
+    "Patchstand",
+    "individuelles Feld"
+  ],
+  "applications": [
+    {
+      "name": "Windows 11",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Windows 10",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Windows Server",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [],
+  "requires": {
+    "customFields": [
+      {
+        "name": "WindowsVersion",
+        "type": "Text",
+        "maxLength": 100,
+        "table": "Attribute",
+        "folder": "Client Info"
+      }
+    ],
+    "globalAccount": null,
+    "notes": [
+      "Das individuelle Feld „WindowsVersion“ (Text, 100 Zeichen) muss vor der Installation unter Client Info → Attribute existieren. Bezeichnung DE und EN genau „WindowsVersion“, ohne Leerzeichen. Feld- und Tabellen-IDs setzt die Installation ein.",
+      "Läuft als Dienst (SYSTEM) und ändert nichts am Client.",
+      "Für einen aktuellen Patchstand regelmäßig ausführen, z. B. nach dem monatlichen Update."
+    ]
+  },
+  "variables": [
+    {
+      "name": "WINDOWS_VERSION_TEXT",
+      "value": ""
+    },
+    {
+      "name": "WINDOWS_VERSION_TEXT_EXIT",
+      "value": ""
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Edition, Version, Build und UBR lesen",
+      "fields": {
+        "BatchLines": [
+          "# Windows-Version als ein Text: Edition, DisplayVersion, Build und UBR",
+          "# Ausgabe z. B.: Windows 11 Pro 24H2 (26100.4061)",
+          "# Exitcode: 0 = gelesen, 1 = Fehler (Meldung steht in der Ausgabe)",
+          "$max = 100",
+          "try {",
+          "    $cv = Get-ItemProperty -Path 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion' -ErrorAction Stop",
+          "    $build = [string]$cv.CurrentBuildNumber",
+          "    # Caption aus WMI nennt Windows 11 richtig. ProductName in der Registry sagt dort noch \"Windows 10\".",
+          "    $name = $null",
+          "    try { $name = [string](Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction Stop).Caption } catch { $name = $null }",
+          "    if (-not $name) {",
+          "        $name = [string]$cv.ProductName",
+          "        if ([int]$build -ge 22000) { $name = $name -replace 'Windows 10', 'Windows 11' }",
+          "    }",
+          "    # Zeichen (R) und (TM) entfernen, die ältere Versionen in der Caption führen",
+          "    $name = $name.Replace([string][char]0x00AE, '').Replace([string][char]0x2122, '')",
+          "    $name = ($name -replace '^Microsoft\\s+', '').Trim()",
+          "    # DisplayVersion gibt es seit 20H2, davor ReleaseId (z. B. 1809)",
+          "    $version = [string]$cv.DisplayVersion",
+          "    if (-not $version) { $version = [string]$cv.ReleaseId }",
+          "    $text = $name",
+          "    if ($version) { $text += ' ' + $version }",
+          "    $text += ' (' + $build",
+          "    if ($null -ne $cv.UBR) { $text += '.' + $cv.UBR }",
+          "    $text += ')'",
+          "    if ($text.Length -gt $max) { $text = $text.Substring(0, $max) }",
+          "    Write-Output $text",
+          "    exit 0",
+          "}",
+          "catch {",
+          "    $text = 'Fehler: ' + $_.Exception.Message",
+          "    if ($text.Length -gt $max) { $text = $text.Substring(0, $max) }",
+          "    Write-Output $text",
+          "    exit 1",
+          "}"
+        ],
+        "ExitCode": "WINDOWS_VERSION_TEXT_EXIT",
+        "OutputLines": "WINDOWS_VERSION_TEXT",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TStoreValueOnACMPServer",
+      "description": "Ergebnis im Feld „WindowsVersion“ speichern",
+      "fields": {
+        "_DataVersion": "2",
+        "Tablename": "{{CF:WindowsVersion:Tablename}}",
+        "Fieldname": "{{CF:WindowsVersion:Fieldname}}",
+        "FieldDisplayName": "WindowsVersion",
+        "FieldType": "1",
+        "FieldID": "{{CF:WindowsVersion:FieldID}}",
+        "Value": "%WINDOWS_VERSION_TEXT%",
+        "TableType": "0",
+        "TableDisplayName": "Attribute",
+        "TableID": "{{CF:WindowsVersion:TableID}}",
+        "Tablenames": "",
+        "Fieldnames": "",
+        "FieldDisplayNames": "",
+        "FieldTypes": "",
+        "FieldIDs": "",
+        "Values": "",
+        "TableTypes": "",
+        "TableDisplayNames": "",
+        "TableIds": "",
+        "FolderTypes": "",
+        "FolderNames": "",
+        "FolderGuids": "",
+        "ClientID": "",
+        "ClearPreviousValues": "False",
+        "StoreMultiValue": "False",
+        "StoredCustomFields": "{\"StoredCustomFields\":[{\"Id\":\"{{CF:WindowsVersion:FieldID}}\",\"ParentId\":\"{{CF:WindowsVersion:TableID}}\",\"DisplayName_en\":\"WindowsVersion\",\"DisplayName_de\":\"WindowsVersion\",\"IsMultiField\":false,\"InputMethod\":\"imText\",\"MaxLength\":100,\"FieldHeight\":0,\"RangeMin\":0,\"RangeMax\":0,\"DecimalPlaces\":0,\"HasRange\":false}]}",
+        "StoredTables": "{\"StoredTables\":[{\"Id\":\"{{CF:WindowsVersion:TableID}}\",\"ParentId\":\"{{CF:WindowsVersion:FolderID}}\",\"DisplayName\":\"Attribute\",\"IsMultiTable\":false}]}",
+        "StoredFolders": "{\"StoredFolders\":[{\"Id\":\"{{CF:WindowsVersion:FolderID}}\",\"ParentId\":\"{{CF:WindowsVersion:FolderParentID}}\",\"DisplayName\":\"Client Info\"}]}"
+      }
+    }
+  ],
+  "files": []
+}

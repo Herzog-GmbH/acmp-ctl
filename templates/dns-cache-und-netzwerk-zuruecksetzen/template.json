@@ -1,0 +1,160 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "dns-cache-und-netzwerk-zuruecksetzen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "DNS-Cache leeren und Netzwerk zurücksetzen",
+  "summary": "Leert den DNS-Cache des Clients mit ipconfig /flushdns. Auf Wunsch setzt der Command zusätzlich Winsock und TCP/IP zurück, aber nicht auf Servern und nicht bei fester IP-Adresse. Das hilft bei Problemen mit Namensauflösung und Verbindungen. Nach dem Reset ist ein Neustart nötig.",
+  "description": "### So funktioniert es\n1. `ipconfig /flushdns` leert den DNS-Cache. Das wirkt sofort.\n2. Nur wenn `NETZ_RESET` auf Ja steht: `netsh winsock reset`, `netsh int ip reset` und `netsh int ipv6 reset`. Auf Windows Server, Domänencontrollern und bei einer festen IPv4-Adresse mit Gateway lehnt das Skript den Reset ab.\n3. Von jedem Befehl steht die letzte Ausgabezeile im Schritt-Protokoll, bei einem Fehler auch der Fehlercode.\n\n### Ergebnis und Exitcodes\n- Exitcode in `NETZ_EXITCODE`: `0` alle Befehle erfolgreich. `1` mindestens ein Befehl meldet einen Fehler. `2` DNS-Cache geleert, Reset abgelehnt (Server oder feste IP-Adresse).\n- Bei `1` und `2` beendet sich der Command mit Fehler.\n\n### Hinweise\n- Der Reset setzt die TCP/IP-Einstellungen auf Standard zurück. Feste IP-Adressen und fest eingetragene DNS-Server können dabei verloren gehen. Deshalb prüft das Skript vorher, ob ein Netzwerkadapter eine feste IPv4-Adresse mit Gateway hat.\n- `netsh winsock reset` entfernt auch Winsock-Erweiterungen (LSP), etwa von altem Virenschutz oder VPN-Software.\n- Winsock und TCP/IP wirken erst nach einem Neustart. Den Neustart plant der Command nicht, er muss separat erfolgen.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Wartung",
+  "tags": [
+    "DNS",
+    "Netzwerk",
+    "Winsock",
+    "TCP/IP",
+    "ipconfig",
+    "netsh"
+  ],
+  "applications": [
+    {
+      "name": "DNS-Client",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Winsock und TCP/IP",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "NETZWERK_RESET",
+      "description": "Ja = zusätzlich Winsock und TCP/IP (IPv4 und IPv6) zurücksetzen, nicht auf Servern und nicht bei fester IPv4-Adresse. Danach ist ein Neustart nötig, den der Command nicht auslöst. Nein = nur DNS-Cache leeren.",
+      "default": "Nein"
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM).",
+      "Mit Reset ist ein Neustart nötig. Der Command startet den PC nicht neu.",
+      "Die Auswahl steht als Projektvariable NETZ_RESET im Command und lässt sich in der Console ändern."
+    ]
+  },
+  "variables": [
+    {
+      "name": "NETZ_RESET",
+      "value": "{{NETZWERK_RESET}}"
+    },
+    {
+      "name": "NETZ_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "DNS-Cache leeren, optional Winsock und TCP/IP zurücksetzen",
+      "summary": "ipconfig /flushdns; bei NETZ_RESET = Ja netsh winsock reset, netsh int ip reset, netsh int ipv6 reset",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in NETZ_EXITCODE: 0 erledigt; 1 ein Befehl meldet Fehler; 2 Reset abgelehnt (Server oder feste IP). Kein Neustart.",
+        "BatchLines": [
+          "# DNS-Cache leeren, auf Wunsch zusaetzlich Winsock und TCP/IP zuruecksetzen. Laeuft als SYSTEM.",
+          "# Rueckgabe in NETZ_EXITCODE: 0 = erledigt, 1 = mindestens ein Befehl meldet einen Fehler,",
+          "#                             2 = DNS-Cache geleert, Reset abgelehnt (Server oder feste IPv4-Adresse)",
+          "# Der Reset loescht feste IP-Einstellungen. Deshalb nie auf Windows Server und nicht bei fester IPv4-Adresse mit Gateway.",
+          "# Keine Prozentzeichen im Code: ACMP ersetzt sie durch Variablen.",
+          "",
+          "$reset = ('%NETZ_RESET%'.Trim() -match '^(ja|yes|true|1)$')",
+          "$sys32 = Join-Path $env:windir 'System32'",
+          "$fehler = 0",
+          "",
+          "function Ausfuehren([string]$titel, [string]$programm, [string[]]$argumente) {",
+          "    Write-Output ('> ' + $titel)",
+          "    $aus = @(& (Join-Path $sys32 $programm) @argumente 2>&1 | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ })",
+          "    $code = $LASTEXITCODE",
+          "    if ($aus.Count -gt 0) { Write-Output ('  ' + $aus[-1]) }",
+          "    if ($code -ne 0) {",
+          "        Write-Output ('  Fehlercode ' + $code)",
+          "        $script:fehler++",
+          "    }",
+          "}",
+          "",
+          "Ausfuehren 'DNS-Cache leeren (ipconfig /flushdns)' 'ipconfig.exe' @('/flushdns')",
+          "$abgelehnt = $false",
+          "if ($reset) {",
+          "    # ProductType: 1 = Client-Windows, 2 = Domaenencontroller, 3 = Server",
+          "    $produktTyp = [int](Get-CimInstance -ClassName Win32_OperatingSystem -ErrorAction SilentlyContinue).ProductType",
+          "    $fest = @(Get-CimInstance -ClassName Win32_NetworkAdapterConfiguration -Filter 'IPEnabled = TRUE' -ErrorAction SilentlyContinue |",
+          "        Where-Object { -not $_.DHCPEnabled -and @($_.DefaultIPGateway | Where-Object { $_ }).Count -gt 0 } |",
+          "        ForEach-Object { [string]$_.Description })",
+          "    if ($produktTyp -ne 1) {",
+          "        Write-Output ('Kein Reset: Windows Server oder Domaenencontroller (ProductType ' + $produktTyp + '). Der Reset wuerde die feste IP-Konfiguration loeschen.')",
+          "        $reset = $false",
+          "        $abgelehnt = $true",
+          "    } elseif ($fest.Count -gt 0) {",
+          "        Write-Output ('Kein Reset: feste IPv4-Adresse mit Gateway an ' + ($fest -join ', ') + '. Der Reset wuerde sie loeschen.')",
+          "        $reset = $false",
+          "        $abgelehnt = $true",
+          "    }",
+          "}",
+          "if ($reset) {",
+          "    Ausfuehren 'Winsock zuruecksetzen (netsh winsock reset)' 'netsh.exe' @('winsock', 'reset')",
+          "    Ausfuehren 'TCP/IPv4 zuruecksetzen (netsh int ip reset)' 'netsh.exe' @('int', 'ip', 'reset')",
+          "    Ausfuehren 'TCP/IPv6 zuruecksetzen (netsh int ipv6 reset)' 'netsh.exe' @('int', 'ipv6', 'reset')",
+          "    Write-Output 'Hinweis: Winsock und TCP/IP wirken erst nach einem Neustart. Der Command startet den PC nicht neu.'",
+          "}",
+          "if ($fehler -gt 0) { exit 1 }",
+          "if ($abgelehnt) { exit 2 }",
+          "exit 0"
+        ],
+        "ExitCode": "NETZ_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn ein Befehl fehlgeschlagen ist oder der Reset abgelehnt wurde",
+      "summary": "NETZ_EXITCODE ungleich 0",
+      "fields": {
+        "Value_1": "%NETZ_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "summary": "Ergebnis: Fehler",
+          "fields": {
+            "Result": "1",
+            "Reason": "Netzwerkbefehl fehlgeschlagen oder Reset abgelehnt, Code %NETZ_EXITCODE% (1 = Befehl fehlgeschlagen, 2 = Reset abgelehnt). Details im Schritt-Protokoll."
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

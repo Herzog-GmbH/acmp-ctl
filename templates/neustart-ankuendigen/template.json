@@ -1,0 +1,215 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "neustart-ankuendigen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Neustart ankündigen und ausführen",
+  "summary": "Plant einen Neustart mit einstellbarer Vorlaufzeit und zeigt allen angemeldeten Benutzern einen Hinweis mit Uhrzeit. Ist niemand angemeldet, startet der Rechner gleich neu. Windows Server und Domänencontroller startet er nur mit AUCH_SERVER = ja neu. Der ACMP-Job endet sofort, er wartet nicht auf den Neustart.",
+  "description": "### So funktioniert es\n1. Das Skript prüft die Parameter und zählt die angemeldeten Sitzungen. Auf Windows Server und Domänencontrollern bricht es ohne Neustart ab, außer `AUCH_SERVER` ist `ja`.\n2. Es plant den Neustart mit `shutdown.exe /r /t <Sekunden> /d p:0:0 /c \"<Meldung>\"`. Die Meldung steht danach auch im Ereignisprotokoll (Ereignis 1074).\n3. Alle angemeldeten Sitzungen bekommen die Meldung mit `msg.exe`, ergänzt um „Neustart um hh:mm Uhr.“.\n4. Ist niemand angemeldet und `OHNE_BENUTZER_SOFORT` nicht `nein`, startet der Rechner nach 60 Sekunden neu.\n\nDer ACMP-Job ist danach fertig. Den Neustart führt Windows selbst aus.\n\n### Ergebnis und Exitcodes\nDer Exitcode steht in `NEUSTART_EXITCODE`. Ist er nicht 0, endet der Command mit Fehler.\n- `0` Neustart geplant\n- `2` Parameter ungültig\n- `3` es ist schon ein Herunterfahren oder Neustart geplant, nichts geändert\n- `4` Windows Server oder Domänencontroller und `AUCH_SERVER` nicht `ja`, nichts geplant\n- `1` sonstiger Fehler\n\n### Hinweise\n- Den Text mit Umlauten einmal auf einem Testrechner prüfen. Das Skript repariert Umlaute, wenn ACMP das Skript als UTF-8 ablegt.\n- Gut als Abschluss nach Updates oder Installationen, die einen Neustart brauchen.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Benutzerhinweise",
+  "tags": [
+    "Neustart",
+    "Reboot",
+    "Benutzerhinweis",
+    "shutdown",
+    "Wartung"
+  ],
+  "applications": [
+    {
+      "name": "Windows",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "VORLAUF_MINUTEN",
+      "description": "Minuten vom Hinweis bis zum Neustart (1 bis 1440).",
+      "default": "15"
+    },
+    {
+      "name": "MELDUNG",
+      "description": "Text des Hinweises. Der Command hängt „Neustart um hh:mm Uhr.“ an. Keine Prozent- und keine Anführungszeichen.",
+      "default": "Ihr PC wird neu gestartet. Bitte speichern Sie jetzt Ihre Arbeit."
+    },
+    {
+      "name": "OHNE_BENUTZER_SOFORT",
+      "description": "„ja“: Ist niemand angemeldet, startet der Rechner schon nach 60 Sekunden neu. „nein“: immer die volle Vorlaufzeit.",
+      "default": "ja"
+    },
+    {
+      "name": "AUCH_SERVER",
+      "description": "„ja“ erlaubt den Neustart auch auf Windows Server und Domänencontrollern. Bei „nein“ bricht der Command dort ab, ohne etwas zu planen (Exitcode 4).",
+      "default": "nein"
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als SYSTEM. Startet den Rechner neu. Nach Ablauf der Vorlaufzeit schließt Windows alle Programme ohne Rückfrage, nicht gespeicherte Daten gehen verloren.",
+      "Auf Windows Server und Domänencontrollern startet der Command nur neu, wenn AUCH_SERVER auf ja steht. Sonst endet er mit Code 4 und Fehler.",
+      "Der Hinweis kommt über msg.exe. Das fehlt unter Windows Home, dort bleibt nur der Hinweis von Windows selbst.",
+      "Abbrechen am Client als Administrator mit shutdown /a."
+    ]
+  },
+  "variables": [
+    {
+      "name": "VORLAUF_MINUTEN",
+      "value": "{{VORLAUF_MINUTEN}}"
+    },
+    {
+      "name": "MELDUNG",
+      "value": "{{MELDUNG}}"
+    },
+    {
+      "name": "OHNE_BENUTZER_SOFORT",
+      "value": "{{OHNE_BENUTZER_SOFORT}}"
+    },
+    {
+      "name": "AUCH_SERVER",
+      "value": "{{AUCH_SERVER}}"
+    },
+    {
+      "name": "NEUSTART_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Neustart planen und Benutzer informieren (PowerShell)",
+      "summary": "shutdown.exe /r /t <Vorlaufzeit> /c \"<Meldung>\", danach msg.exe * mit der Meldung an alle Sitzungen",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in NEUSTART_EXITCODE: 0 Neustart geplant, 2 Parameter ungültig, 3 schon ein Neustart geplant, 4 Server oder Domänencontroller ohne AUCH_SERVER = ja, 1 sonstiger Fehler.",
+        "BatchLines": [
+          "# Neustart ankuendigen und mit Vorlaufzeit ausfuehren",
+          "# ACMP CTL, Vorlage neustart-ankuendigen. Laeuft als SYSTEM (64-Bit-PowerShell).",
+          "# Keine Prozentzeichen verwenden: ACMP ersetzt sie durch Projektvariablen.",
+          "# Gewollt ersetzt werden nur VORLAUF_MINUTEN, MELDUNG, OHNE_BENUTZER_SOFORT und AUCH_SERVER.",
+          "#",
+          "# Ablauf:",
+          "#  1. Parameter pruefen. Windows Server und Domaenencontroller nur mit AUCH_SERVER = ja.",
+          "#     Angemeldete Sitzungen zaehlen (laufende explorer.exe)",
+          "#  2. Neustart mit shutdown.exe /r /t <Sekunden> planen. Nach Ablauf schliesst Windows",
+          "#     alle Programme ohne Rueckfrage, nicht gespeicherte Daten gehen verloren.",
+          "#  3. Hinweis mit msg.exe an alle Sitzungen. Fehlt msg.exe (z. B. Windows Home), bleibt nur der Hinweis von Windows.",
+          "#  Ist niemand angemeldet und OHNE_BENUTZER_SOFORT nicht nein, startet der Rechner nach 60 Sekunden neu.",
+          "#  Abbrechen am Client als Administrator: shutdown /a",
+          "#",
+          "# Rueckgabe: 0 Neustart geplant",
+          "#            2 Parameter ungueltig",
+          "#            3 es ist bereits ein Herunterfahren oder Neustart geplant, nichts geaendert",
+          "#            4 Windows Server oder Domaenencontroller und AUCH_SERVER nicht ja, nichts geplant",
+          "#            1 sonstiger Fehler",
+          "",
+          "$minutenText = '%VORLAUF_MINUTEN%'.Trim()",
+          "$meldung = (@'",
+          "%MELDUNG%",
+          "'@).Trim()",
+          "$ohneBenutzerSofort = ('%OHNE_BENUTZER_SOFORT%'.Trim().ToLower() -ne 'nein')",
+          "$auchServer = ('%AUCH_SERVER%'.Trim().ToLower() -eq 'ja')",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "function Melde([string]$text) { [Console]::Out.WriteLine($text) }",
+          "function Abbruch([int]$code, [string]$text) { Melde ('FEHLER ' + $code + ': ' + $text); exit $code }",
+          "trap { Melde ('FEHLER 1: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "$minuten = 0",
+          "if (-not [int]::TryParse($minutenText, [ref]$minuten) -or $minuten -lt 1 -or $minuten -gt 1440) {",
+          "    Abbruch 2 ('VORLAUF_MINUTEN muss eine ganze Zahl von 1 bis 1440 sein, ist: ' + $minutenText)",
+          "}",
+          "if (-not $meldung) { $meldung = 'Ihr PC wird neu gestartet. Bitte speichern Sie jetzt Ihre Arbeit.' }",
+          "",
+          "# Windows Server und Domaenencontroller (ProductType 2 und 3) nur mit AUCH_SERVER = ja",
+          "$produktTyp = [int](Get-CimInstance -ClassName Win32_OperatingSystem).ProductType",
+          "if ($produktTyp -ne 1 -and -not $auchServer) {",
+          "    Abbruch 4 ('Windows Server oder Domaenencontroller (ProductType ' + $produktTyp + '). Kein Neustart geplant. Zum Erlauben AUCH_SERVER auf ja setzen.')",
+          "}",
+          "",
+          "# Wurde das Skript als UTF-8 geschrieben, aber als ANSI gelesen, die Umlaute reparieren",
+          "$kaputt = [string][char]0x00C3",
+          "if ($meldung.Contains($kaputt)) {",
+          "    $repariert = [Text.Encoding]::UTF8.GetString([Text.Encoding]::GetEncoding(1252).GetBytes($meldung))",
+          "    if (-not $repariert.Contains([string][char]0xFFFD)) { $meldung = $repariert }",
+          "}",
+          "",
+          "# Angemeldete Sitzungen",
+          "$explorer = @(Get-CimInstance -ClassName Win32_Process -Filter \"Name = 'explorer.exe'\" -ErrorAction SilentlyContinue)",
+          "$sitzungen = @($explorer | ForEach-Object { $_.SessionId } | Sort-Object -Unique).Count",
+          "$sekunden = $minuten * 60",
+          "if ($sitzungen -eq 0 -and $ohneBenutzerSofort) {",
+          "    $sekunden = 60",
+          "    Melde 'Niemand angemeldet: Neustart in 60 Sekunden.'",
+          "}",
+          "$zeitpunkt = (Get-Date).AddSeconds($sekunden).ToString('HH:mm')",
+          "$text = ($meldung + ' Neustart um ' + $zeitpunkt + ' Uhr.').Replace('\"', \"'\")",
+          "if ($text.Length -gt 500) { $text = $text.Substring(0, 500) }",
+          "",
+          "# Neustart planen",
+          "$shutdown = Join-Path $env:windir 'System32\\shutdown.exe'",
+          "$p = Start-Process -FilePath $shutdown -ArgumentList ('/r /t ' + $sekunden + ' /d p:0:0 /c \"' + $text + '\"') -Wait -PassThru -WindowStyle Hidden",
+          "if ($null -eq $p.ExitCode) { Abbruch 1 'Exitcode von shutdown.exe nicht lesbar.' }",
+          "if ($p.ExitCode -eq 1190) { Abbruch 3 'Es ist bereits ein Herunterfahren oder Neustart geplant. Nichts geaendert.' }",
+          "if ($p.ExitCode -ne 0) { Abbruch 1 ('shutdown.exe meldet ' + $p.ExitCode) }",
+          "Melde ('Neustart geplant um ' + $zeitpunkt + ' Uhr (in ' + $sekunden + ' Sekunden), angemeldete Sitzungen: ' + $sitzungen)",
+          "",
+          "# Hinweis an alle Sitzungen",
+          "if ($sitzungen -gt 0) {",
+          "    $msg = Join-Path $env:windir 'System32\\msg.exe'",
+          "    if (Test-Path -LiteralPath $msg) {",
+          "        $q = Start-Process -FilePath $msg -ArgumentList ('* /TIME:' + $sekunden + ' \"' + $text + '\"') -Wait -PassThru -WindowStyle Hidden",
+          "        Melde ('Hinweis gesendet (msg.exe: ' + $q.ExitCode + ').')",
+          "    } else {",
+          "        Melde 'msg.exe fehlt (z. B. Windows Home). Den Hinweis zeigt nur Windows selbst.'",
+          "    }",
+          "}",
+          "exit 0"
+        ],
+        "ExitCode": "NEUSTART_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn das Skript einen Fehler meldet",
+      "fields": {
+        "Value_1": "%NEUSTART_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "Neustart nicht geplant, Code %NEUSTART_EXITCODE% (3 = es ist schon ein Neustart geplant, 4 = Server oder Domänencontroller, AUCH_SERVER nicht ja)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

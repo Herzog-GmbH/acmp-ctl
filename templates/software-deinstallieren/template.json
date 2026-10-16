@@ -1,0 +1,476 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "software-deinstallieren",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Software deinstallieren (MSI und Setup-Programme)",
+  "summary": "Deinstalliert ein Programm still für alle Benutzer. Gesucht wird über ein Muster auf den Namen in der Softwareliste. MSI-Pakete laufen über msiexec, andere Setups über ihr eigenes Deinstallationsprogramm. Danach prüft der Command, ob das Programm wirklich weg ist.",
+  "description": "## So funktioniert es\n1. Sucht in der Softwareliste (64 und 32 Bit) alle Einträge, deren Name auf `SW_MUSTER` passt (regulärer Ausdruck, z. B. `^PDFsam Basic` oder `^ZebraDesigner 3$`).\n2. Beendet laufende Programme: alle Prozesse aus `SW_PROZESSE` und alle, die aus dem Installationsordner laufen. Systemprozesse und Programme aus dem Windows-Ordner bleiben verschont. Steht als Installationsordner ein Systemordner wie `C:\\Program Files` in der Softwareliste, nutzt der Command ihn dafür nicht.\n3. MSI-Einträge: `msiexec /x {ProduktCode} /qn /norestart` mit Protokoll.\n4. Übrige Einträge: `QuietUninstallString`, sonst `UninstallString` plus `SW_EXE_ARGUMENTE` (z. B. `/S`). Ohne stillen Aufruf startet der Command nichts, damit kein unsichtbares Fenster auf eine Eingabe wartet. Jeder Aufruf hat eine Zeitgrenze von 10 Minuten.\n5. Wartet bis zu 2 Minuten, bis kein passender Eintrag mehr da ist, und stößt danach den Software-Scanner an.\n6. Bei `HINWEISE` = ja bekommt der angemeldete Benutzer eine kurze Meldung.\n\n## Ergebnis/Exitcodes\n- 0 = deinstalliert (ein Neustart-Hinweis 3010/1641 zählt als Erfolg)\n- 20 = war nicht installiert\n- 5 = steht danach noch in der Softwareliste\n- 6 = Muster trifft mehr als 5 Einträge (Schutz vor zu breiten Mustern, nichts wurde geändert)\n- 2 = kein Muster angegeben\n- 1 = sonstiger Fehler\n\nBei 0 und 20 endet der Command erfolgreich, sonst mit Fehler.\n\n## Hinweise\n- Das Muster vorher an einem Rechner prüfen, z. B. mit `Get-ItemProperty HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\* | Where-Object DisplayName -match '<Muster>'`.\n- Ohne angemeldeten Benutzer entfallen nur die Meldungen.\n- Gesucht wird in der Softwareliste des Rechners (HKLM). Programme, die nur für einen Benutzer installiert sind, findet der Command nicht.\n- Protokoll: `C:\\Windows\\Temp\\acmp-software-uninstall.log`, MSI-Protokolle daneben.\n- Einen Neustart löst der Command nie aus.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Software",
+  "tags": [
+    "Deinstallation",
+    "MSI",
+    "msiexec",
+    "Uninstall",
+    "Softwareverteilung",
+    "Kiosk"
+  ],
+  "applications": [
+    {
+      "name": "Windows Installer",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "APP_NAME",
+      "description": "Anzeigename für Meldungen und Protokoll, z. B. PDFsam Basic",
+      "required": true
+    },
+    {
+      "name": "MUSTER",
+      "description": "Regulärer Ausdruck auf den Namen in der Softwareliste, z. B. ^PDFsam Basic. Möglichst genau, höchstens 5 Treffer.",
+      "required": true
+    },
+    {
+      "name": "PROZESSE",
+      "description": "Optional: Prozessnamen ohne .exe, die vorher beendet werden, durch Komma getrennt, z. B. pdfsam",
+      "default": "",
+      "required": false
+    },
+    {
+      "name": "EXE_ARGUMENTE",
+      "description": "Optional: Parameter für Deinstallationsprogramme ohne stillen Aufruf, z. B. /S (NSIS) oder /VERYSILENT /NORESTART (Inno Setup)",
+      "default": "",
+      "required": false
+    },
+    {
+      "name": "HINWEISE",
+      "description": "ja = Benutzer bekommt eine Meldung (schließt sich nach 2 Minuten), nein = still ohne Meldung, etwa für Verteilungen im Hintergrund",
+      "default": "ja",
+      "required": true
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Die Deinstallation läuft als Dienst (SYSTEM), die Meldungen als angemeldeter Benutzer.",
+      "Der Schritt „Software Scanner ausführen“ nutzt die Standard-Aufgabe von ACMP. Fehlt sie, wird der Schritt übersprungen (Fehler ignorieren ist an).",
+      "Kein Neustart. Braucht ein Programm einen, kommt das im Protokoll als Code 3010 oder 1641."
+    ]
+  },
+  "variables": [
+    {
+      "name": "SW_ANZEIGENAME",
+      "value": "{{APP_NAME}}"
+    },
+    {
+      "name": "SW_MUSTER",
+      "value": "{{MUSTER}}"
+    },
+    {
+      "name": "SW_PROZESSE",
+      "value": "{{PROZESSE}}"
+    },
+    {
+      "name": "SW_EXE_ARGUMENTE",
+      "value": "{{EXE_ARGUMENTE}}"
+    },
+    {
+      "name": "SW_HINWEISE",
+      "value": "{{HINWEISE}}"
+    },
+    {
+      "name": "UNINSTALL_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Software deinstallieren und Ergebnis prüfen (als SYSTEM)",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Deinstalliert still alle Einträge, die auf SW_MUSTER passen, und prüft das Ergebnis. Rückgabe in UNINSTALL_EXITCODE (0 deinstalliert, 20 war nicht installiert, 5 noch vorhanden, 6 Muster zu breit).",
+        "BatchLines": [
+          "# Software deinstallieren (MSI und klassische Setups), fuer alle Benutzer des Rechners",
+          "#",
+          "# Laeuft als SYSTEM ueber ACMP (64-Bit-PowerShell).",
+          "# Einstellungen kommen aus den Projektvariablen SW_ANZEIGENAME, SW_MUSTER, SW_PROZESSE und SW_EXE_ARGUMENTE.",
+          "#",
+          "# Ablauf:",
+          "#  1. Eintraege in der Softwareliste suchen (DisplayName passt auf das Muster, 64 und 32 Bit)",
+          "#     Nichts gefunden: fertig (Rueckgabe 20). Mehr als 5 Treffer: Abbruch (Muster zu ungenau).",
+          "#  2. laufende Programme beenden",
+          "#  3. MSI-Eintraege mit msiexec /x deinstallieren (still, ohne Neustart, mit Protokoll)",
+          "#  4. verbliebene Eintraege mit ihrem eigenen Deinstallationsprogramm still entfernen",
+          "#     (QuietUninstallString, sonst UninstallString plus SW_EXE_ARGUMENTE; ohne stillen Aufruf wird nichts gestartet)",
+          "#  5. pruefen, ob nichts mehr in der Softwareliste steht",
+          "#",
+          "# Rueckgabe: 0 deinstalliert, 20 war nicht installiert, 5 danach noch vorhanden,",
+          "#            2 Muster fehlt, 6 Muster trifft zu viele Eintraege, 1 sonstiger Fehler.",
+          "#            Ein Neustart-Hinweis (3010/1641) gilt als Erfolg.",
+          "# Protokoll: C:\\Windows\\Temp\\acmp-software-uninstall.log, MSI-Protokolle daneben",
+          "",
+          "$appName    = '%SW_ANZEIGENAME%'.Trim()",
+          "$muster     = '%SW_MUSTER%'.Trim()",
+          "$prozesse   = @('%SW_PROZESSE%'.Split(',') | ForEach-Object { $_.Trim() -replace '\\.exe$', '' } | Where-Object { $_ })",
+          "$exeArgs    = '%SW_EXE_ARGUMENTE%'.Trim()",
+          "$maxTreffer = 5",
+          "$wartezeit  = 600          # Sekunden je Deinstallationsprogramm, danach wird es beendet",
+          "$nurPruefen = $false       # true = nur anzeigen, was passieren wuerde",
+          "if (-not $appName) { $appName = $muster }",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "$logDatei = Join-Path $env:windir 'Temp\\acmp-software-uninstall.log'",
+          "if ($nurPruefen) { $logDatei = Join-Path $env:TEMP 'acmp-software-uninstall-probe.log' }",
+          "",
+          "function Schreibe([string]$text) {",
+          "    [Console]::Out.WriteLine($text)",
+          "    try { Add-Content -LiteralPath $logDatei -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $text) -Encoding UTF8 } catch { }",
+          "}",
+          "function Abbruch([int]$code, [string]$text) {",
+          "    Schreibe ('FEHLER ' + $code + ': ' + $text)",
+          "    exit $code",
+          "}",
+          "trap { Schreibe ('FEHLER 1: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "if (-not $muster) { Abbruch 2 'Kein Suchmuster angegeben (Projektvariable SW_MUSTER).' }",
+          "",
+          "# Aufrufe immer in @() packen: Bei genau einem Treffer fehlt in Windows PowerShell 5.1 sonst .Count",
+          "function Finde-Eintraege {",
+          "    $schluessel = @('HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',",
+          "                    'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')",
+          "    @(Get-ItemProperty -Path $schluessel -ErrorAction SilentlyContinue |",
+          "        Where-Object { $_.DisplayName -and $_.DisplayName -match $muster })",
+          "}",
+          "function MSI-Code($eintrag) {",
+          "    if ($eintrag.PSChildName -match '^\\{[0-9A-Fa-f\\-]{36}\\}$') { return $eintrag.PSChildName }",
+          "    if ([string]$eintrag.UninstallString -match '(?i)msiexec[^{]*(\\{[0-9A-Fa-f\\-]{36}\\})') { return $Matches[1] }",
+          "    return $null",
+          "}",
+          "function Ist-MSI($eintrag) {",
+          "    ([string]$eintrag.WindowsInstaller -eq '1' -or [string]$eintrag.UninstallString -match '(?i)msiexec') -and (MSI-Code $eintrag)",
+          "}",
+          "function Teile-Befehl([string]$befehl) {",
+          "    # liefert @(Programm, Argumente) aus einem UninstallString",
+          "    $befehl = $befehl.Trim()",
+          "    if ($befehl.StartsWith('\"')) {",
+          "        $ende = $befehl.IndexOf('\"', 1)",
+          "        if ($ende -lt 0) { return @($befehl.Trim('\"'), '') }",
+          "        return @($befehl.Substring(1, $ende - 1), $befehl.Substring($ende + 1).Trim())",
+          "    }",
+          "    $pos = $befehl.ToLower().IndexOf('.exe')",
+          "    if ($pos -lt 0) { return @($befehl, '') }",
+          "    return @($befehl.Substring(0, $pos + 4), $befehl.Substring($pos + 4).Trim())",
+          "}",
+          "function Ist-Erfolg([int]$code) { $code -eq 0 -or $code -eq 3010 -or $code -eq 1641 -or $code -eq 1605 }",
+          "function Starte([string]$programm, [string]$argumente) {",
+          "    # startet unsichtbar, wartet hoechstens $wartezeit Sekunden und liefert den Exitcode (-1 = abgebrochen)",
+          "    if ($argumente) { $p = Start-Process -FilePath $programm -ArgumentList $argumente -PassThru -WindowStyle Hidden }",
+          "    else { $p = Start-Process -FilePath $programm -PassThru -WindowStyle Hidden }",
+          "    $null = $p.Handle   # sonst liefert ExitCode in Windows PowerShell 5.1 manchmal nichts",
+          "    if (-not $p.WaitForExit($wartezeit * 1000)) {",
+          "        Schreibe ('Zeitueberschreitung nach ' + $wartezeit + ' s, beende ' + $programm)",
+          "        Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue",
+          "        return -1",
+          "    }",
+          "    return $p.ExitCode",
+          "}",
+          "",
+          "Schreibe ('Start auf ' + $env:COMPUTERNAME + ': ' + $appName + ' (Muster ' + $muster + ')' + ($(if ($nurPruefen) { ' (nur pruefen)' } else { '' })))",
+          "",
+          "# 1. Eintraege suchen",
+          "$eintraege = @(Finde-Eintraege)",
+          "if ($eintraege.Count -eq 0) { Schreibe ($appName + ' ist nicht installiert, nichts zu tun.'); exit 20 }",
+          "foreach ($e in $eintraege) { Schreibe ('Gefunden: ' + $e.DisplayName + ' ' + $e.DisplayVersion + ' [' + $e.PSChildName + '] ' + $e.UninstallString) }",
+          "if ($eintraege.Count -gt $maxTreffer) { Abbruch 6 ('Das Muster trifft ' + $eintraege.Count + ' Eintraege (hoechstens ' + $maxTreffer + '). Muster genauer fassen.') }",
+          "",
+          "# 2. Programme beenden (nach Name und aus dem Installationsordner)",
+          "# Schutz: Systemprozesse und dieses Skript nie beenden. Installationsordner im Windows-Ordner und Ordner",
+          "# wie C:\\Program Files selbst (oder darueber) zaehlen nicht, sonst traefe es fremde Programme.",
+          "$schutzNamen = @('System', 'Idle', 'Registry', 'Memory Compression', 'smss', 'csrss', 'wininit', 'winlogon',",
+          "                 'services', 'lsass', 'lsaiso', 'svchost', 'fontdrvhost', 'dwm', 'MsMpEng')",
+          "$windowsOrdner = $env:windir.TrimEnd('\\') + '\\'",
+          "$schutzOrdner = @($windowsOrdner, $env:ProgramFiles, ${env:ProgramFiles(x86)}, $env:ProgramW6432, $env:CommonProgramFiles,",
+          "                  ${env:CommonProgramFiles(x86)}, $env:ProgramData, (Join-Path $env:SystemDrive 'Users')) |",
+          "    Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\\') + '\\' }",
+          "$pfade = @($eintraege | Where-Object { $_.InstallLocation } | ForEach-Object { [string]$_.InstallLocation })",
+          "$pfade = @($pfade | Where-Object { $_ -and $_.Trim('\"').Length -gt 3 } | ForEach-Object { $_.Trim('\"').TrimEnd('\\') + '\\' } | Select-Object -Unique)",
+          "$pfade = @($pfade | Where-Object {",
+          "    $o = $_",
+          "    $schutz = $o.StartsWith($windowsOrdner, [StringComparison]::OrdinalIgnoreCase) -or",
+          "        (@($schutzOrdner | Where-Object { $_.StartsWith($o, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0)",
+          "    if ($schutz) { Schreibe ('Installationsordner ' + $o + ' ist ein Systemordner. Programme daraus werden nicht beendet.') }",
+          "    -not $schutz",
+          "})",
+          "foreach ($p in @(Get-Process -ErrorAction SilentlyContinue)) {",
+          "    if ($p.Id -eq $PID -or $schutzNamen -contains $p.ProcessName) { continue }",
+          "    $treffer = $prozesse -contains $p.ProcessName",
+          "    if (-not $treffer -and $p.Path) {",
+          "        foreach ($o in $pfade) { if ($p.Path.StartsWith($o, [StringComparison]::OrdinalIgnoreCase)) { $treffer = $true } }",
+          "    }",
+          "    if ($treffer) {",
+          "        Schreibe ('Beende ' + $p.ProcessName + ' (PID ' + $p.Id + ')')",
+          "        if (-not $nurPruefen) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }",
+          "    }",
+          "}",
+          "if (-not $nurPruefen) { Start-Sleep -Seconds 2 }",
+          "",
+          "# 3. MSI-Eintraege",
+          "foreach ($e in $eintraege) {",
+          "    if (-not (Ist-MSI $e)) { continue }",
+          "    $code = MSI-Code $e",
+          "    $msiLog = Join-Path $env:windir ('Temp\\acmp-software-uninstall-' + $code.Trim('{}') + '.log')",
+          "    $argumente = '/x ' + $code + ' /qn /norestart /l*v \"' + $msiLog + '\"'",
+          "    Schreibe ('msiexec ' + $argumente)",
+          "    if ($nurPruefen) { continue }",
+          "    $ergebnis = Starte (Join-Path $env:windir 'System32\\msiexec.exe') $argumente",
+          "    Schreibe ('msiexec beendet mit Code ' + $ergebnis)",
+          "    if (-not (Ist-Erfolg $ergebnis)) { Schreibe ('Warnung: msiexec meldet ' + $ergebnis + ', weiter mit Pruefung.') }",
+          "}",
+          "",
+          "# 4. Verbliebene Eintraege mit eigenem Deinstallationsprogramm",
+          "if (-not $nurPruefen) { $eintraege = @(Finde-Eintraege) }",
+          "foreach ($e in $eintraege) {",
+          "    if ($nurPruefen -and (Ist-MSI $e)) { continue }",
+          "    $still = [bool]$e.QuietUninstallString",
+          "    if ($still) { $teile = Teile-Befehl ([string]$e.QuietUninstallString) }",
+          "    elseif ($e.UninstallString) { $teile = Teile-Befehl ([string]$e.UninstallString) }",
+          "    else { Schreibe ('Kein Deinstallationsbefehl fuer ' + $e.DisplayName); continue }",
+          "    if ((Ist-MSI $e) -or $teile[0] -match '(?i)msiexec') { continue }",
+          "    if (-not $still -and -not $exeArgs) {",
+          "        # Ohne stillen Aufruf wuerde das Deinstallationsprogramm unsichtbar auf eine Eingabe warten",
+          "        Schreibe ('Kein stiller Aufruf fuer ' + $e.DisplayName + ' bekannt. Parameter fuer das Deinstallationsprogramm in SW_EXE_ARGUMENTE angeben (z. B. /S).')",
+          "        continue",
+          "    }",
+          "    # SW_EXE_ARGUMENTE nur ergaenzen, wenn es keinen stillen Aufruf (QuietUninstallString) gibt",
+          "    $argumente = ([string]$teile[1]).Trim()",
+          "    if (-not $still) { $argumente = ($teile[1] + ' ' + $exeArgs).Trim() }",
+          "    Schreibe ('Deinstallationsprogramm: \"' + $teile[0] + '\" ' + $argumente)",
+          "    if ($nurPruefen) { continue }",
+          "    if (-not (Test-Path -LiteralPath $teile[0])) { Schreibe ('Deinstallationsprogramm fehlt: ' + $teile[0]); continue }",
+          "    $ergebnis = Starte $teile[0] $argumente",
+          "    Schreibe ('Deinstallationsprogramm beendet mit Code ' + $ergebnis)",
+          "}",
+          "",
+          "if ($nurPruefen) { Schreibe 'Probe beendet, nichts geaendert.'; exit 0 }",
+          "",
+          "# 5. Pruefen (manche Deinstaller laufen als Kopie im Hintergrund weiter, darum bis zu 2 Minuten warten)",
+          "for ($i = 0; $i -lt 24; $i++) {",
+          "    $rest = @(Finde-Eintraege)",
+          "    if ($rest.Count -eq 0) { break }",
+          "    Start-Sleep -Seconds 5",
+          "}",
+          "if ($rest.Count -gt 0) {",
+          "    foreach ($e in $rest) { Schreibe ('Noch vorhanden: ' + $e.DisplayName + ' ' + $e.DisplayVersion + ' [' + $e.PSChildName + ']') }",
+          "    Abbruch 5 ($appName + ' steht nach der Deinstallation noch in der Softwareliste.')",
+          "}",
+          "Schreibe ($appName + ' ist deinstalliert.')",
+          "exit 0"
+        ],
+        "ExitCode": "UNINSTALL_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TEnqueueClientTask",
+      "description": "Software Scanner ausführen (Inventar aktualisieren)",
+      "fields": {
+        "_DataVersion": "4",
+        "Ignore_error": "True",
+        "TaskId": "{072BE601-5372-4618-9A6D-2571D230278E}",
+        "Task": "Software Scanner"
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn deinstalliert wurde",
+      "fields": {
+        "Value_1": "%UNINSTALL_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "=",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionIf",
+          "description": "Wenn Hinweise an den Benutzer gewünscht sind",
+          "fields": {
+            "Value_1": "%SW_HINWEISE%",
+            "Value_2": "ja",
+            "Operator": "=",
+            "CaseSensitive": "False",
+            "DigitsAsNumbers": "False"
+          },
+          "children": [
+            {
+              "class": "TMessageDialog",
+              "description": "Hinweis: deinstalliert",
+              "fields": {
+                "Ignore_error": "True",
+                "isSystem": "False",
+                "Title": "%SW_ANZEIGENAME%",
+                "Message_text": "%SW_ANZEIGENAME% wurde deinstalliert.",
+                "Prompt": "",
+                "Default_value": "",
+                "Variable_name": "",
+                "Suggestions": "",
+                "MessageboxType": "2",
+                "VisibleButtons": "1",
+                "FailButtons": "0",
+                "DenyManualInput": "False",
+                "Automatic_close": "True",
+                "Auto_close_after": "120",
+                "ResultAfterTimeOut": "1",
+                "DialogType": "0",
+                "Button_yes_caption": "Ja",
+                "Button_no_caption": "Nein",
+                "Button_cancel_caption": "Abbrechen",
+                "Button_ok_caption": "OK",
+                "Display_style": "0"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "class": "TActionElse",
+      "description": "Sonst",
+      "fields": {},
+      "children": [
+        {
+          "class": "TActionIf",
+          "description": "Wenn es nicht installiert war",
+          "fields": {
+            "Value_1": "%UNINSTALL_EXITCODE%",
+            "Value_2": "20",
+            "Operator": "=",
+            "CaseSensitive": "False",
+            "DigitsAsNumbers": "False"
+          },
+          "children": [
+            {
+              "class": "TActionIf",
+              "description": "Wenn Hinweise an den Benutzer gewünscht sind",
+              "fields": {
+                "Value_1": "%SW_HINWEISE%",
+                "Value_2": "ja",
+                "Operator": "=",
+                "CaseSensitive": "False",
+                "DigitsAsNumbers": "False"
+              },
+              "children": [
+                {
+                  "class": "TMessageDialog",
+                  "description": "Hinweis: war nicht installiert",
+                  "fields": {
+                    "Ignore_error": "True",
+                    "isSystem": "False",
+                    "Title": "%SW_ANZEIGENAME%",
+                    "Message_text": "%SW_ANZEIGENAME% ist auf diesem Rechner nicht installiert.",
+                    "Prompt": "",
+                    "Default_value": "",
+                    "Variable_name": "",
+                    "Suggestions": "",
+                    "MessageboxType": "2",
+                    "VisibleButtons": "1",
+                    "FailButtons": "0",
+                    "DenyManualInput": "False",
+                    "Automatic_close": "True",
+                    "Auto_close_after": "120",
+                    "ResultAfterTimeOut": "1",
+                    "DialogType": "0",
+                    "Button_yes_caption": "Ja",
+                    "Button_no_caption": "Nein",
+                    "Button_cancel_caption": "Abbrechen",
+                    "Button_ok_caption": "OK",
+                    "Display_style": "0"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "class": "TActionElse",
+          "description": "Sonst",
+          "fields": {},
+          "children": [
+            {
+              "class": "TActionIf",
+              "description": "Wenn Hinweise an den Benutzer gewünscht sind",
+              "fields": {
+                "Value_1": "%SW_HINWEISE%",
+                "Value_2": "ja",
+                "Operator": "=",
+                "CaseSensitive": "False",
+                "DigitsAsNumbers": "False"
+              },
+              "children": [
+                {
+                  "class": "TMessageDialog",
+                  "description": "Fehlermeldung an den Benutzer",
+                  "fields": {
+                    "Ignore_error": "True",
+                    "isSystem": "False",
+                    "Title": "%SW_ANZEIGENAME%",
+                    "Message_text": "%SW_ANZEIGENAME% konnte nicht deinstalliert werden (Code %UNINSTALL_EXITCODE%).\r\n\r\nBitte melden Sie sich bei der IT.\r\nProtokoll: C:\\Windows\\Temp\\acmp-software-uninstall.log",
+                    "Prompt": "",
+                    "Default_value": "",
+                    "Variable_name": "",
+                    "Suggestions": "",
+                    "MessageboxType": "1",
+                    "VisibleButtons": "1",
+                    "FailButtons": "0",
+                    "DenyManualInput": "False",
+                    "Automatic_close": "True",
+                    "Auto_close_after": "120",
+                    "ResultAfterTimeOut": "1",
+                    "DialogType": "0",
+                    "Button_yes_caption": "Ja",
+                    "Button_no_caption": "Nein",
+                    "Button_cancel_caption": "Abbrechen",
+                    "Button_ok_caption": "OK",
+                    "Display_style": "0"
+                  }
+                }
+              ]
+            },
+            {
+              "class": "TActionExitScript",
+              "description": "Command mit Fehler beenden",
+              "fields": {
+                "Result": "1",
+                "Reason": "Deinstallation von %SW_ANZEIGENAME% fehlgeschlagen, Code %UNINSTALL_EXITCODE%, Protokoll C:\\Windows\\Temp\\acmp-software-uninstall.log"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "files": []
+}

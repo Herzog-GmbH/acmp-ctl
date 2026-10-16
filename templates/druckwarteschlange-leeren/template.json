@@ -1,0 +1,191 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "druckwarteschlange-leeren",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Druckwarteschlange leeren",
+  "summary": "Stoppt den Druckspooler, löscht hängende Druckaufträge und startet den Dienst wieder. Hilft, wenn ein Drucker nicht mehr druckt oder Aufträge sich nicht löschen lassen. Auf Druckservern bricht der Command zum Schutz ab.",
+  "description": "### So funktioniert es\n1. Freigegebene Drucker werden aus der Registry gelesen. Gibt der Rechner Drucker frei und ist `AUCH_DRUCKSERVER` nicht `ja`, endet der Command ohne Änderung.\n2. Der Dienst „Druckwarteschlange“ wird gestoppt. Reagiert er nicht innerhalb von 30 Sekunden, wird `spoolsv.exe` beendet.\n3. Im Spool-Ordner (Standard `C:\\Windows\\System32\\spool\\PRINTERS`, ein umgeleiteter Ordner wird erkannt) werden nur Spooldateien gelöscht: `*.SPL` und `*.SHD`.\n4. Der Spooler und vorher laufende abhängige Dienste starten wieder.\n\n### Ergebnis und Exitcodes\nDer Exitcode steht in `SPOOL_EXITCODE`. Ist er nicht 0, endet der Command mit Fehler.\n- `0` geleert, Spooler läuft\n- `3` Druckserver erkannt, nichts geändert\n- `4` Spooler lässt sich nicht stoppen, nichts gelöscht\n- `5` Spooler startet nicht wieder\n- `6` einzelne Spooldateien ließen sich nicht löschen, Spooler läuft wieder\n- `1` sonstiger Fehler\n\n### Hinweise\n- Gut geeignet für den Kiosk oder als Schnellaktion für den Helpdesk.\n- Ein deaktivierter Spooler bleibt deaktiviert.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Wartung",
+  "tags": [
+    "Drucker",
+    "Spooler",
+    "Druckauftrag",
+    "Druckwarteschlange",
+    "Dienst"
+  ],
+  "applications": [
+    {
+      "name": "Druckwarteschlange (Spooler)",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "AUCH_DRUCKSERVER",
+      "description": "„ja“ leert die Warteschlange auch auf Rechnern mit freigegebenen Druckern (Druckserver). Bei „nein“ bricht der Command dort ohne Änderung ab.",
+      "default": "nein"
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als SYSTEM. Kein Neustart.",
+      "Gelöscht werden alle wartenden Aufträge des Rechners, auch die anderer Benutzer.",
+      "Druckt ein Benutzer über einen Druckserver, liegen die Aufträge dort. Dann den Command auf dem Druckserver ausführen (mit AUCH_DRUCKSERVER ja)."
+    ]
+  },
+  "variables": [
+    {
+      "name": "AUCH_DRUCKSERVER",
+      "value": "{{AUCH_DRUCKSERVER}}"
+    },
+    {
+      "name": "SPOOL_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Spooler stoppen, Spooldateien löschen, Spooler starten (PowerShell)",
+      "summary": "Spooler stoppen (notfalls spoolsv.exe beenden), *.SPL und *.SHD im Spool-Ordner löschen, Spooler und abhängige Dienste starten",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in SPOOL_EXITCODE: 0 geleert, 3 Druckserver erkannt (nichts geändert), 4 Spooler stoppt nicht, 5 Spooler startet nicht, 6 Dateien nicht löschbar, 1 sonstiger Fehler.",
+        "BatchLines": [
+          "# Druckwarteschlange leeren: Spooler stoppen, Spooldateien loeschen, Spooler starten",
+          "# ACMP CTL, Vorlage druckwarteschlange-leeren. Laeuft als SYSTEM (64-Bit-PowerShell).",
+          "# Keine Prozentzeichen verwenden: ACMP ersetzt sie durch Projektvariablen.",
+          "# Gewollt ersetzt wird nur AUCH_DRUCKSERVER.",
+          "#",
+          "# Geloescht werden nur Spooldateien (*.SPL, *.SHD) im Spool-Ordner, sonst nichts.",
+          "# Gibt der Rechner Drucker frei (Druckserver), bricht das Skript ab, ausser AUCH_DRUCKSERVER ist ja.",
+          "# Dort wuerden sonst die Auftraege aller Benutzer geloescht.",
+          "#",
+          "# Rueckgabe: 0 geleert, Spooler laeuft",
+          "#            3 Druckserver erkannt, nichts geaendert",
+          "#            4 Spooler laesst sich nicht stoppen, nichts geloescht",
+          "#            5 Spooler startet nicht wieder",
+          "#            6 einzelne Spooldateien liessen sich nicht loeschen (Spooler laeuft wieder)",
+          "#            1 sonstiger Fehler",
+          "",
+          "$auchDruckserver = ('%AUCH_DRUCKSERVER%'.Trim().ToLower() -eq 'ja')",
+          "",
+          "$ErrorActionPreference = 'Stop'",
+          "function Melde([string]$text) { [Console]::Out.WriteLine($text) }",
+          "function Abbruch([int]$code, [string]$text) { Melde ('FEHLER ' + $code + ': ' + $text); exit $code }",
+          "trap { Melde ('FEHLER 1: ' + $_.Exception.Message); exit 1 }",
+          "",
+          "# Drucker aus der Registry lesen (Win32_Printer haengt, wenn der Spooler haengt)",
+          "$druckerSchluessel = 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\Print\\Printers'",
+          "$freigegeben = @(Get-ChildItem -LiteralPath $druckerSchluessel -ErrorAction SilentlyContinue | Where-Object {",
+          "    $attr = $_.GetValue('Attributes')",
+          "    ($null -ne $attr) -and (([int64]$attr -band 8) -ne 0)",
+          "} | ForEach-Object { $_.PSChildName })",
+          "if ($freigegeben.Count -gt 0) {",
+          "    Melde ('Freigegebene Drucker: ' + ($freigegeben -join ', '))",
+          "    if (-not $auchDruckserver) {",
+          "        Abbruch 3 'Der Rechner gibt Drucker frei (Druckserver). Nichts geaendert. Zum Erzwingen AUCH_DRUCKSERVER auf ja setzen.'",
+          "    }",
+          "}",
+          "",
+          "# Spool-Ordner (kann umgeleitet sein)",
+          "$spool = $null",
+          "try { $spool = [string](Get-ItemProperty -LiteralPath $druckerSchluessel -Name DefaultSpoolDirectory -ErrorAction Stop).DefaultSpoolDirectory } catch { }",
+          "if (-not $spool) { $spool = Join-Path $env:windir 'System32\\spool\\PRINTERS' }",
+          "Melde ('Spool-Ordner: ' + $spool)",
+          "",
+          "$spooler = Get-Service -Name Spooler",
+          "$abhaengige = @($spooler.DependentServices | Where-Object { $_.Status -eq 'Running' } | ForEach-Object { $_.Name })",
+          "",
+          "# 1. Spooler stoppen (reagiert er nicht, wird spoolsv.exe beendet)",
+          "if ($spooler.Status -ne 'Stopped') {",
+          "    try { $spooler.Stop() } catch { Melde ('Stoppen: ' + $_.Exception.Message) }",
+          "    try { $spooler.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(30)) }",
+          "    catch {",
+          "        Melde 'Spooler reagiert nicht, beende spoolsv.exe.'",
+          "        Get-Process -Name spoolsv -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue",
+          "        try { $spooler.WaitForStatus('Stopped', [TimeSpan]::FromSeconds(15)) } catch { }",
+          "    }",
+          "    $spooler.Refresh()",
+          "    if ($spooler.Status -ne 'Stopped') { Abbruch 4 ('Spooler laesst sich nicht stoppen, Status: ' + $spooler.Status) }",
+          "}",
+          "Melde 'Spooler gestoppt.'",
+          "",
+          "# 2. Spooldateien loeschen",
+          "$dateien = @(Get-ChildItem -LiteralPath $spool -File -Force -ErrorAction SilentlyContinue | Where-Object { $_.Extension -eq '.spl' -or $_.Extension -eq '.shd' })",
+          "$auftraege = @($dateien | Where-Object { $_.Extension -eq '.spl' }).Count",
+          "$rest = 0",
+          "foreach ($d in $dateien) {",
+          "    try { Remove-Item -LiteralPath $d.FullName -Force -ErrorAction Stop }",
+          "    catch { $rest++; Melde ('Nicht loeschbar: ' + $d.Name + ' (' + $_.Exception.Message + ')') }",
+          "}",
+          "Melde ('Geloescht: ' + ($dateien.Count - $rest) + ' von ' + $dateien.Count + ' Spooldateien (' + $auftraege + ' Druckauftraege).')",
+          "",
+          "# 3. Spooler wieder starten (ausser er ist deaktiviert)",
+          "$spooler.Refresh()",
+          "if ([string]$spooler.StartType -eq 'Disabled') {",
+          "    Melde 'Der Spooler ist deaktiviert und bleibt aus.'",
+          "} else {",
+          "    $spooler.Start()",
+          "    try { $spooler.WaitForStatus('Running', [TimeSpan]::FromSeconds(30)) } catch { }",
+          "    $spooler.Refresh()",
+          "    if ($spooler.Status -ne 'Running') { Abbruch 5 ('Spooler startet nicht, Status: ' + $spooler.Status) }",
+          "    Melde 'Spooler laeuft.'",
+          "    foreach ($n in $abhaengige) {",
+          "        try { Start-Service -Name $n -ErrorAction Stop; Melde ('Wieder gestartet: ' + $n) }",
+          "        catch { Melde ('Konnte ' + $n + ' nicht starten: ' + $_.Exception.Message) }",
+          "    }",
+          "}",
+          "if ($rest -gt 0) { Abbruch 6 ('' + $rest + ' Spooldatei(en) liessen sich nicht loeschen.') }",
+          "exit 0"
+        ],
+        "ExitCode": "SPOOL_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn das Skript einen Fehler meldet",
+      "fields": {
+        "Value_1": "%SPOOL_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "fields": {
+            "Result": "1",
+            "Reason": "Druckwarteschlange nicht geleert, Code %SPOOL_EXITCODE% (siehe Protokoll des PowerShell-Schritts)"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}

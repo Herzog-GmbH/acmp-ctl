@@ -1,0 +1,252 @@
+{
+  "$schema": "../../schema/ctl-template-1.schema.json",
+  "schema": "acmp-ctl/template@1",
+  "id": "appx-pakete-entfernen",
+  "version": "1.0.0",
+  "status": "entwurf",
+  "name": "Vorinstallierte Apps (Appx) entfernen",
+  "summary": "Entfernt vorinstallierte Store-Apps wie Xbox, News oder Solitaire: die bereitgestellten Pakete für neue Benutzer und die installierten Pakete aller vorhandenen Benutzer. Die Paketliste ist ein Parameter, Platzhalter * sind erlaubt.",
+  "description": "### So funktioniert es\n1. Das Skript prüft jedes Muster. Eine leere Liste, ungültige Zeichen und zu allgemeine Muster brechen ab, bevor etwas passiert. Zu allgemein sind `*`, `Microsoft.*` und jedes Muster, das auf mehr als 10 verschiedene Pakete passt.\n2. Bereitgestellte Pakete (`Get-AppxProvisionedPackage -Online`), deren Name passt, entfernt `Remove-AppxProvisionedPackage`. Neue Benutzer bekommen die App dann nicht mehr.\n3. Installierte Pakete aller Benutzer (`Get-AppxPackage -AllUsers`) entfernt `Remove-AppxPackage -AllUsers`.\n4. Nie entfernt werden Systempakete, Frameworks und nicht entfernbare Pakete sowie Store, App-Installer (winget), Windows-Sicherheit und Laufzeitbibliotheken.\n5. Jede Aktion steht im Schritt-Protokoll und zusätzlich in `C:\\Windows\\Temp\\acmp-ctl-appx-entfernen.log`.\n\n### Ergebnis und Exitcodes\n- Exitcode in `APPX_EXITCODE`: `0` erledigt oder nichts gefunden. `1` mindestens ein Paket ließ sich nicht entfernen. `2` Paketliste ungültig.\n- Bei `1` und `2` beendet sich der Command mit Fehler.\n\n### Hinweise\n- Neue Muster zuerst mit `NUR_PRUEFEN` = Ja auf einem Testrechner ausführen und das Protokoll lesen.\n- Die Paketnamen eines PCs zeigt `Get-AppxProvisionedPackage -Online | Select-Object DisplayName`.\n- Ein Funktionsupdate von Windows kann entfernte Apps wieder bereitstellen. Dann den Command erneut ausführen.\n- Ist der Microsoft Store erlaubt, kann ein Benutzer eine entfernte App dort wieder installieren.\n- Für eine einzelne Store- oder MSIX-App passt auch die Vorlage `store-app-deinstallieren`.",
+  "author": {
+    "name": "herzog GmbH",
+    "github": "Herzog-GmbH"
+  },
+  "license": "MIT",
+  "updated": "2026-10-16",
+  "category": "Software",
+  "tags": [
+    "Appx",
+    "Store-Apps",
+    "Bloatware",
+    "Provisioned Packages",
+    "Windows 11",
+    "Xbox"
+  ],
+  "applications": [
+    {
+      "name": "Microsoft Store-Apps (Appx)",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Xbox",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Microsoft Solitaire Collection",
+      "vendor": "Microsoft"
+    },
+    {
+      "name": "Microsoft News",
+      "vendor": "Microsoft"
+    }
+  ],
+  "acmp": {
+    "minVersion": "6.10",
+    "scriptFormat": 13,
+    "exportedWith": "6.10.4"
+  },
+  "parameters": [
+    {
+      "name": "PAKETE",
+      "description": "Paketnamen, durch Komma getrennt. Platzhalter * erlaubt, z. B. Microsoft.Xbox*. Zu allgemeine Muster wie * oder Microsoft.* und Muster, die auf mehr als 10 Pakete passen, werden abgelehnt.",
+      "default": "Microsoft.XboxApp,Microsoft.GamingApp,Microsoft.BingNews,Microsoft.MicrosoftSolitaireCollection",
+      "required": true
+    },
+    {
+      "name": "NUR_PRUEFEN",
+      "description": "Ja = nur protokollieren, was entfernt würde. Nein = entfernen.",
+      "default": "Nein"
+    }
+  ],
+  "requires": {
+    "customFields": [],
+    "globalAccount": null,
+    "notes": [
+      "Läuft als Dienst (SYSTEM) in 64-Bit-PowerShell. Kein Neustart.",
+      "Windows 10 ab Version 1809 oder Windows 11 (Remove-AppxPackage mit -AllUsers).",
+      "Paketliste und Prüfmodus stehen als Projektvariablen (APPX_PAKETE, APPX_NUR_PRUEFEN) im Command und lassen sich in der Console ändern."
+    ]
+  },
+  "variables": [
+    {
+      "name": "APPX_PAKETE",
+      "value": "{{PAKETE}}"
+    },
+    {
+      "name": "APPX_NUR_PRUEFEN",
+      "value": "{{NUR_PRUEFEN}}"
+    },
+    {
+      "name": "APPX_EXITCODE",
+      "value": "-1"
+    }
+  ],
+  "steps": [
+    {
+      "class": "TExecutePowerShell",
+      "description": "Bereitgestellte und installierte Appx-Pakete entfernen",
+      "summary": "Remove-AppxProvisionedPackage -Online und Remove-AppxPackage -AllUsers für jedes Muster aus APPX_PAKETE",
+      "fields": {
+        "_CommandComment": "Läuft als SYSTEM. Rückgabe in APPX_EXITCODE: 0 erledigt; 1 Paket nicht entfernt; 2 Liste ungültig. Protokoll C:\\Windows\\Temp\\acmp-ctl-appx-entfernen.log",
+        "BatchLines": [
+          "# Appx-Pakete entfernen: bereitgestellte Pakete (fuer neue Benutzer) und installierte Pakete aller Benutzer.",
+          "# Laeuft als SYSTEM (64 Bit). Protokoll zusaetzlich in C:\\Windows\\Temp\\acmp-ctl-appx-entfernen.log",
+          "# Rueckgabe in APPX_EXITCODE: 0 = erledigt oder nichts gefunden, 1 = mindestens ein Paket nicht entfernt, 2 = Paketliste ungueltig",
+          "# Keine Prozentzeichen im Code: ACMP ersetzt sie durch Variablen.",
+          "",
+          "$logDatei = Join-Path $env:windir 'Temp\\acmp-ctl-appx-entfernen.log'",
+          "function Log([string]$text) {",
+          "    Write-Output $text",
+          "    try { Add-Content -LiteralPath $logDatei -Value ((Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '  ' + $text) -Encoding UTF8 } catch { }",
+          "}",
+          "",
+          "$liste = @'",
+          "%APPX_PAKETE%",
+          "'@",
+          "$nurPruefen = ('%APPX_NUR_PRUEFEN%'.Trim() -match '^(ja|yes|true|1)$')",
+          "$muster = @($liste -split '[,;\\r\\n]+' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)",
+          "",
+          "# Diese Pakete werden nie entfernt: Store, winget, Windows-Sicherheit, Laufzeitbibliotheken, Anmeldung, Shell",
+          "$geschuetzt = @('Microsoft.WindowsStore', 'Microsoft.StorePurchaseApp', 'Microsoft.DesktopAppInstaller', 'Microsoft.SecHealthUI',",
+          "    'Microsoft.VCLibs*', 'Microsoft.UI.Xaml*', 'Microsoft.NET.*', 'Microsoft.WindowsAppRuntime*', 'Microsoft.Services.Store.Engagement',",
+          "    'Microsoft.AAD.BrokerPlugin', 'Microsoft.Windows.ShellExperienceHost', 'Microsoft.Windows.StartMenuExperienceHost',",
+          "    'Microsoft.Windows.CloudExperienceHost', 'MicrosoftWindows.Client.*', 'windows.immersivecontrolpanel')",
+          "function Ist-Geschuetzt([string]$name) {",
+          "    foreach ($g in $geschuetzt) { if ($name -like $g) { return $true } }",
+          "    return $false",
+          "}",
+          "",
+          "if ($nurPruefen) { Log ('Start auf ' + $env:COMPUTERNAME + ' (nur pruefen, es wird nichts entfernt)') }",
+          "else { Log ('Start auf ' + $env:COMPUTERNAME) }",
+          "if ($muster.Count -eq 0) {",
+          "    Log 'FEHLER: Die Paketliste ist leer.'",
+          "    exit 2",
+          "}",
+          "foreach ($m in $muster) {",
+          "    $kern = $m.Replace('*', '')",
+          "    if ($m -notmatch '^[A-Za-z0-9._*-]+$' -or $kern.Length -lt 4 -or $kern -match '^(Microsoft|MicrosoftWindows|Windows|Microsoft\\.Windows)\\.?$') {",
+          "        Log ('FEHLER: Muster ungueltig oder zu allgemein: ' + $m)",
+          "        exit 2",
+          "    }",
+          "}",
+          "Log ('Muster: ' + ($muster -join ', '))",
+          "$entfernt = 0",
+          "$fehler = 0",
+          "",
+          "$bereit = @()",
+          "try {",
+          "    $bereit = @(Get-AppxProvisionedPackage -Online -ErrorAction Stop)",
+          "} catch {",
+          "    Log ('FEHLER: Bereitgestellte Pakete nicht lesbar: ' + $_.Exception.Message)",
+          "    $fehler++",
+          "}",
+          "",
+          "# Schutz gegen zu breite Muster (z. B. Micr* oder *soft*): passt ein Muster auf mehr als $maxTreffer",
+          "# verschiedene Paketnamen, bricht das Skript ab, bevor etwas entfernt wird",
+          "$maxTreffer = 10",
+          "$installiert = @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue)",
+          "foreach ($m in $muster) {",
+          "    $namen = @(@($bereit | Where-Object { $_.DisplayName -like $m } | ForEach-Object { [string]$_.DisplayName }) +",
+          "        @($installiert | Where-Object { $_.Name -like $m } | ForEach-Object { [string]$_.Name }) | Sort-Object -Unique)",
+          "    if ($namen.Count -gt $maxTreffer) {",
+          "        Log ('FEHLER: Muster ' + $m + ' passt auf ' + $namen.Count + ' Pakete (mehr als ' + $maxTreffer + '). Zu allgemein, nichts entfernt.')",
+          "        exit 2",
+          "    }",
+          "}",
+          "",
+          "# 1. Bereitgestellte Pakete (werden neuen Benutzern bei der ersten Anmeldung installiert)",
+          "foreach ($m in $muster) {",
+          "    $treffer = @($bereit | Where-Object { $_.DisplayName -like $m })",
+          "    if ($treffer.Count -eq 0) {",
+          "        Log ('Bereitgestellt: nichts passt auf ' + $m)",
+          "        continue",
+          "    }",
+          "    foreach ($b in $treffer) {",
+          "        if (Ist-Geschuetzt $b.DisplayName) {",
+          "            Log ('Uebersprungen (geschuetzt): ' + $b.PackageName)",
+          "            continue",
+          "        }",
+          "        if ($nurPruefen) {",
+          "            Log ('Wuerde entfernen (bereitgestellt): ' + $b.PackageName)",
+          "            continue",
+          "        }",
+          "        try {",
+          "            Remove-AppxProvisionedPackage -Online -PackageName $b.PackageName -ErrorAction Stop | Out-Null",
+          "            Log ('Entfernt (bereitgestellt): ' + $b.PackageName)",
+          "            $entfernt++",
+          "        } catch {",
+          "            Log ('FEHLER (bereitgestellt) ' + $b.PackageName + ': ' + $_.Exception.Message)",
+          "            $fehler++",
+          "        }",
+          "    }",
+          "}",
+          "",
+          "# 2. Installierte Pakete aller Benutzer",
+          "foreach ($m in $muster) {",
+          "    $pakete = @(Get-AppxPackage -AllUsers -Name $m -ErrorAction SilentlyContinue)",
+          "    if ($pakete.Count -eq 0) {",
+          "        Log ('Installiert: nichts passt auf ' + $m)",
+          "        continue",
+          "    }",
+          "    foreach ($p in $pakete) {",
+          "        if ($p.IsFramework -or $p.NonRemovable -or [string]$p.SignatureKind -eq 'System' -or (Ist-Geschuetzt $p.Name)) {",
+          "            Log ('Uebersprungen (System, Framework oder geschuetzt): ' + $p.PackageFullName)",
+          "            continue",
+          "        }",
+          "        if ($nurPruefen) {",
+          "            Log ('Wuerde entfernen (installiert): ' + $p.PackageFullName)",
+          "            continue",
+          "        }",
+          "        try {",
+          "            Remove-AppxPackage -Package $p.PackageFullName -AllUsers -ErrorAction Stop",
+          "            Log ('Entfernt (installiert, alle Benutzer): ' + $p.PackageFullName)",
+          "            $entfernt++",
+          "        } catch {",
+          "            Log ('FEHLER (installiert) ' + $p.PackageFullName + ': ' + $_.Exception.Message)",
+          "            $fehler++",
+          "        }",
+          "    }",
+          "}",
+          "",
+          "Log ('Fertig: ' + $entfernt + ' entfernt, ' + $fehler + ' Fehler.')",
+          "if ($fehler -gt 0) { exit 1 }",
+          "exit 0"
+        ],
+        "ExitCode": "APPX_EXITCODE",
+        "OutputLines": "",
+        "ShowConsole": "False",
+        "Use64Bit": "True",
+        "RunAsGlobalAccount": "False",
+        "RunAsDifferentUser": "False",
+        "RunAsRequestElevatedRights": "False",
+        "RunAsGlobalAccountId": "",
+        "RunAsUsername": "",
+        "RunAsPassword": ""
+      }
+    },
+    {
+      "class": "TActionIf",
+      "description": "Wenn ein Paket nicht entfernt wurde",
+      "summary": "APPX_EXITCODE ungleich 0",
+      "fields": {
+        "Value_1": "%APPX_EXITCODE%",
+        "Value_2": "0",
+        "Operator": "<>",
+        "CaseSensitive": "False",
+        "DigitsAsNumbers": "False"
+      },
+      "children": [
+        {
+          "class": "TActionExitScript",
+          "description": "Command mit Fehler beenden",
+          "summary": "Ergebnis: Fehler",
+          "fields": {
+            "Result": "1",
+            "Reason": "Appx-Pakete: Code %APPX_EXITCODE% (1 = Paket nicht entfernt, 2 = Paketliste ungültig). Protokoll C:\\Windows\\Temp\\acmp-ctl-appx-entfernen.log"
+          }
+        }
+      ]
+    }
+  ],
+  "files": []
+}
