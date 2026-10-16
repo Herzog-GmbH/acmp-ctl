@@ -2,11 +2,11 @@
   "$schema": "../../schema/ctl-template-1.schema.json",
   "schema": "acmp-ctl/template@1",
   "id": "lokaler-admin-hinzufuegen",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "status": "entwurf",
   "name": "Benutzer zum lokalen Administrator machen",
   "summary": "Nimmt ein ausdrücklich angegebenes Konto in die lokale Gruppe der Administratoren auf. Ohne Angabe bricht der Command ab und ändert nichts. Die Gruppe wird über ihre SID gesucht, das funktioniert in jeder Windows-Sprache. Nicht für den Kiosk gedacht.",
-  "description": "## So funktioniert es\n1. Das Konto steht in der Projektvariablen `ADMIN_BENUTZER` (Form `DOMÄNE\\name`). Ist sie leer oder hat sie eine andere Form, bricht der Command mit Code 2 ab und ändert nichts.\n2. Die Gruppe wird über die SID `S-1-5-32-544` gefunden, also „Administratoren“, „Administrators“ usw.\n3. Ist das Konto schon Mitglied, passiert nichts. Verglichen wird über den Namen und, wenn Windows sie auflösen kann, über die SID des Kontos.\n4. Sonst nimmt `net localgroup … /add` das Konto auf, danach wird die Mitgliedschaft geprüft.\n\n## Ergebnis/Exitcodes\n- 0 = aufgenommen oder schon Mitglied\n- 2 = `ADMIN_BENUTZER` leer oder nicht in der Form `DOMÄNE\\name`, nichts geändert\n- 3 = Aufnehmen fehlgeschlagen (Meldung von net im Protokoll)\n\nBei 2 oder 3 endet der Command mit Fehler.\n\n## Hinweise\n- **Nicht in den Kiosk stellen.** Sonst kann sich jeder Benutzer mit Kiosk-Zugriff selbst zum lokalen Administrator machen.\n- Lokale Administratorrechte sind ein Sicherheitsrisiko. Den Command nur für berechtigte Personen freigeben und die Vergabe dokumentieren.\n- Die Rechte gelten ab der nächsten Anmeldung des Benutzers.\n- Domänenkonten werden über das Computerkonto aufgelöst. Der Client braucht dafür Verbindung zum Domänencontroller.\n- Entra-ID-Konten (`AzureAD\\…`, z. B. `AzureAD\\vorname.nachname@example.com`) sind ungetestet. Vorher auf einem Testrechner prüfen.",
+  "description": "## So funktioniert es\n1. Das Konto steht in der Projektvariablen `ADMIN_BENUTZER` (Form `DOMÄNE\\name`). Ist sie leer oder hat sie eine andere Form, bricht der Command mit Code 2 ab und ändert nichts. Das gilt auch für ein Entra-ID-Konto (`AzureAD\\…`) auf einem Rechner, der nicht in Entra ID eingebunden ist.\n2. Die Gruppe wird über die SID `S-1-5-32-544` gefunden, also „Administratoren“, „Administrators“ usw.\n3. Ist das Konto schon Mitglied, passiert nichts. Verglichen wird über den Namen und, wenn Windows sie auflösen kann, über die SID des Kontos.\n4. Sonst nimmt `net localgroup … /add` das Konto auf, danach wird die Mitgliedschaft geprüft.\n\n## Ergebnis/Exitcodes\n- 0 = aufgenommen oder schon Mitglied\n- 2 = `ADMIN_BENUTZER` leer, nicht in der Form `DOMÄNE\\name` oder ein Entra-ID-Konto auf einem Rechner ohne Entra-Einbindung, nichts geändert\n- 3 = Aufnehmen fehlgeschlagen (Meldung von net im Protokoll)\n\nBei 2 oder 3 endet der Command mit Fehler.\n\n## Hinweise\n- **Nicht in den Kiosk stellen.** Sonst kann sich jeder Benutzer mit Kiosk-Zugriff selbst zum lokalen Administrator machen.\n- Lokale Administratorrechte sind ein Sicherheitsrisiko. Den Command nur für berechtigte Personen freigeben und die Vergabe dokumentieren.\n- Die Rechte gelten ab der nächsten Anmeldung des Benutzers.\n- Domänenkonten werden über das Computerkonto aufgelöst. Der Client braucht dafür Verbindung zum Domänencontroller.\n- Entra-ID-Konten (`AzureAD\\…`, z. B. `AzureAD\\vorname.nachname@example.com`) kennt nur ein Rechner, der in Entra ID eingebunden ist (`dsregcmd /status`: Entra-joined oder hybrid). Auf einem reinen Domänenrechner bricht der Command mit Code 2 ab. Das Aufnehmen eines Entra-Kontos ist ungetestet, vorher auf einem Testrechner prüfen.\n\n## Getestet\n- 16.10.2026, Windows 11 Pro (Build 26200), ACMP 6.10.4, Domänenrechner ohne Entra-Einbindung: Konto schon Mitglied, Meldung „nichts zu tun“, Ergebnis 0. `AzureAD\\…`: Abbruch mit Code 2, Gruppe unverändert. Das Konto lässt sich beim Einstellen des Jobs als Variable `ADMIN_BENUTZER` mitgeben.\n- Ungetestet: das tatsächliche Aufnehmen (Domänen- und Entra-Konto), Code 3.",
   "author": {
     "name": "herzog GmbH",
     "github": "Herzog-GmbH"
@@ -46,7 +46,7 @@
       "Läuft als Dienst (SYSTEM). Ein globaler Account ist nicht nötig.",
       "Nicht in den Kiosk stellen: Sonst kann sich jeder Benutzer mit Kiosk-Zugriff selbst zum lokalen Administrator machen.",
       "Das Konto ist Pflicht. Den angemeldeten oder zuletzt angemeldeten Benutzer nimmt der Command bewusst nicht.",
-      "Entra-ID-Konten (AzureAD\\…) sind ungetestet.",
+      "Entra-ID-Konten (AzureAD\\…) nur auf Rechnern, die in Entra ID eingebunden sind, sonst Abbruch mit Code 2. Das Aufnehmen eines Entra-Kontos ist ungetestet.",
       "Der Benutzer muss sich neu anmelden, damit die Rechte greifen."
     ]
   },
@@ -70,7 +70,8 @@
           "# Laeuft als SYSTEM. Das Konto kommt aus der Projektvariablen ADMIN_BENUTZER (DOMAENE\\name) und ist Pflicht.",
           "# Ist sie leer oder hat sie eine andere Form, bricht das Skript ab, ohne etwas zu aendern.",
           "# Die Gruppe wird ueber ihre SID (S-1-5-32-544) gefunden und funktioniert so in jeder Windows-Sprache.",
-          "# Rueckgabe: 0 aufgenommen oder schon Mitglied, 2 ADMIN_BENUTZER leer oder ungueltig (nichts geaendert), 3 Aufnehmen fehlgeschlagen.",
+          "# Rueckgabe: 0 aufgenommen oder schon Mitglied, 2 ADMIN_BENUTZER leer oder ungueltig oder Entra-Konto auf einem Rechner ohne Entra (nichts geaendert),",
+          "#            3 Aufnehmen fehlgeschlagen.",
           "$benutzer = (@'",
           "%ADMIN_BENUTZER%",
           "'@).Trim()",
@@ -82,6 +83,11 @@
           "$teile = $benutzer.Split('\\')",
           "if ($teile.Count -ne 2 -or -not $teile[0].Trim() -or -not $teile[1].Trim() -or $benutzer -match '[\\r\\n]') {",
           "    [Console]::Out.WriteLine('FEHLER 2: Erwartet DOMAENE\\name, erhalten \"' + $benutzer + '\". Es wurde nichts geaendert.')",
+          "    exit 2",
+          "}",
+          "# Entra-ID-Konten (AzureAD\\...) kennt nur ein Rechner, der in Entra ID eingebunden ist (Entra-joined oder hybrid)",
+          "if ($teile[0] -eq 'AzureAD' -and @(Get-ChildItem -LiteralPath 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\CloudDomainJoin\\JoinInfo' -ErrorAction SilentlyContinue).Count -eq 0) {",
+          "    [Console]::Out.WriteLine('FEHLER 2: ' + $benutzer + ' ist ein Entra-ID-Konto, dieser Rechner ist aber nicht in Entra ID eingebunden (dsregcmd /status). Es wurde nichts geaendert.')",
           "    exit 2",
           "}",
           "",
@@ -149,7 +155,7 @@
           "description": "Command mit Fehler beenden",
           "fields": {
             "Result": "1",
-            "Reason": "Lokale Administratorrechte nicht gesetzt, Code %ADMIN_EXITCODE% (2 = ADMIN_BENUTZER leer oder ungültig, 3 = net localgroup fehlgeschlagen)"
+            "Reason": "Lokale Administratorrechte nicht gesetzt, Code %ADMIN_EXITCODE% (2 = ADMIN_BENUTZER leer, ungültig oder Entra-Konto ohne Entra-Einbindung, 3 = net localgroup fehlgeschlagen)"
           }
         }
       ]
