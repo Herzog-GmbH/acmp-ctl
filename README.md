@@ -27,7 +27,11 @@ Ablauf beim Installieren (so setzt es `acmp_lib_install` um):
 3. Dateien beim Hersteller laden (`url`) oder aus dem Repo nehmen (`path`) und den SHA-256 prüfen.
 4. Entwurf anlegen wie `acmp_cc_create_draft`, Dateien anhängen wie `acmp_cc_add_file`. Mit `dryRun: true` zeigt der MCP nur, was angelegt würde.
 
-Voraussetzung ist der ACMP MCP mit eingeschaltetem CC-Writer (siehe dort `docs/ACMP-VORBEREITUNG.md`). Ohne MCP könnt ihr jede Vorlage auch von Hand nachbauen: Die Website zeigt jeden Schritt samt Skript.
+Voraussetzung ist der ACMP MCP mit eingeschaltetem CC-Writer (siehe dort `docs/ACMP-VORBEREITUNG.md`).
+
+## Ohne MCP: der Bauplan
+
+Jede Vorlage hat auf der Website einen **Bauplan**: Er zeigt, wie ihr den Command von Hand in der ACMP-Console anlegt. Befehle und Felder heißen dort wie in der deutschen Console („Powershell-Script ausführen“, „Registrywerte bearbeiten“, Hauptschlüssel, Wertname …), Skripte und Texte lassen sich kopieren, eure Parameterwerte werden direkt eingesetzt. Der Bauplan entsteht automatisch aus den Schritten der Vorlage und lässt sich drucken.
 
 ## Aufbau
 
@@ -36,6 +40,7 @@ schema/ctl-template-1.schema.json   Format einer Vorlage (JSON Schema)
 templates/<id>/template.json        eine Vorlage je Ordner, optional README.md und files/
 community/aagon-filebase.json       Verweise auf die Aagon Community Filebase (nur Links)
 tools/build.mjs                     prüft alle Vorlagen und baut site/index.json
+tools/bereiche.mjs                  Bereiche der Startseite (Software, Betriebssystem, Active Directory …) und ihre Zuordnung
 tools/from-decode.mjs               macht aus acmp_cc_decode eine Vorlage und bereinigt sie
 site/                               die Webseite (statisch, liest index.json)
 ```

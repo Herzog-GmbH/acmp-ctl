@@ -10,7 +10,7 @@ Danke, dass ihr einen Command teilt. Weil Vorlagen auf fremden Clients mit SYSTE
    node tools/from-decode.mjs meincommand.decode.json --id mein-command --category Wartung
    ```
    Das Skript entfernt Kennwortfelder, macht aus globalen Accounts `{{GLOBAL_ACCOUNT_ID}}`, aus RunAs-Konten Parameter und aus euren internen Pfaden (`tools/scan-rules.local.json`, Abschnitt `replace`) ebenfalls Parameter.
-3. **Ausfüllen:** In `templates/mein-command/template.json` alle `TODO`-Stellen ersetzen: `summary`, `author`, `tags`, `applications`, Beschreibungen der Parameter. Dateien bekommen `url` (Download beim Hersteller) oder `path` (Skript im Repo) und den SHA-256.
+3. **Ausfüllen:** In `templates/mein-command/template.json` alle `TODO`-Stellen ersetzen: `summary`, `author`, `tags`, `applications`, Beschreibungen der Parameter. Dateien bekommen `url` (Download beim Hersteller) oder `path` (Skript im Repo) und den SHA-256. Über `category`, `tags` und `applications` landet die Vorlage in den Bereichen der Startseite (Regeln in `tools/bereiche.mjs`); passt sie in keinen, meldet der Build einen Hinweis. Den Bauplan für die Console erzeugt die Website selbst aus den Schritten.
 4. **Prüfen:**
    ```powershell
    node tools/build.mjs --check

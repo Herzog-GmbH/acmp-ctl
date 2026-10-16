@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { ROOT, CATEGORIES, validateTemplate, scanTemplate, loadPrivateRules, flatSteps, autoSummary, flagsFor, splitRelPath } from './lib.mjs';
+import { BEREICHE, bereicheFor, hauptbereich } from './bereiche.mjs';
 
 const CHECK_ONLY = process.argv.includes('--check');
 const DOWNLOAD = process.argv.includes('--download');
@@ -49,6 +50,8 @@ for (const dir of fs.readdirSync(tplDir, { withFileTypes: true }).filter(d => d.
   const v = validateTemplate(tpl, dir);
   const s = scanTemplate(tpl, rules);
   for (const f of tpl.files || []) await checkFile(f, dir, v.errors, v.warnings);
+  const areas = bereicheFor({ key: tpl.id, category: tpl.category, tags: tpl.tags, applications: tpl.applications, requires: tpl.requires });
+  if (!areas.length) v.warnings.push('passt in keinen Bereich der Startseite (tools/bereiche.mjs) – Tags oder Anwendungen ergänzen');
   const errors = [...v.errors, ...s.errors], warnings = [...v.warnings, ...s.warnings];
   const mark = errors.length ? '✗' : warnings.length ? '!' : '✓';
   console.log(`${mark} ${dir}  v${tpl.version} · ${tpl.status} · ${flatSteps(tpl.steps).length} Schritte`);
@@ -62,17 +65,22 @@ for (const dir of fs.readdirSync(tplDir, { withFileTypes: true }).filter(d => d.
     return o;
   });
   const { $schema, ...rest } = tpl;
-  templates.push({ ...rest, steps: withSummary(tpl.steps), stepCount: flatSteps(tpl.steps).length, flags: flagsFor(tpl) });
+  templates.push({ ...rest, steps: withSummary(tpl.steps), stepCount: flatSteps(tpl.steps).length, flags: flagsFor(tpl), areas, area: hauptbereich(areas) });
 }
 
 const community = JSON.parse(fs.readFileSync(path.join(ROOT, 'community', 'aagon-filebase.json'), 'utf8'));
+for (const e of community.entries) {
+  e.areas = bereicheFor({ key: 'filebase-' + e.id, category: e.category, tags: e.tags, applications: e.applications });
+  e.area = hauptbereich(e.areas);
+}
 console.log(`\n${templates.length} Vorlagen in Ordnung, ${failed} mit Fehlern · ${community.entries.length} Community-Verweise`);
 if (!rules.patterns.length) console.log('Hinweis: keine tools/scan-rules.local.json – interne Namen werden nicht geprüft.');
 if (!DOWNLOAD && templates.some(t => (t.files || []).some(f => f.url))) console.log('Hinweis: Dateien mit url wurden nicht geladen – mit --download auch deren SHA-256 prüfen.');
 
 if (failed) process.exit(1);
 if (!CHECK_ONLY) {
-  const index = { schema: 'acmp-ctl/index@1', generated: new Date().toISOString(), categories: CATEGORIES, templates, community };
+  const areas = BEREICHE.map(({ id, name, text, icon, hue }) => ({ id, name, text, icon, hue }));
+  const index = { schema: 'acmp-ctl/index@1', generated: new Date().toISOString(), categories: CATEGORIES, areas, templates, community };
   fs.writeFileSync(path.join(ROOT, 'site', 'index.json'), JSON.stringify(index));
   console.log('site/index.json geschrieben');
 }

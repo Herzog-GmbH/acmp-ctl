@@ -4,12 +4,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ACMP CTL</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Offene Bibliothek mit Client-Command-Vorlagen für ACMP. Jeder Schritt im Klartext, installierbar als Entwurf über den ACMP MCP.">
+<meta name="description" content="Offene Bibliothek mit Client-Command-Vorlagen für ACMP. Jeder Schritt im Klartext, mit Bauplan für die Console oder installierbar als Entwurf über den ACMP MCP.">
 <link rel="preload" href="fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 /* ACMP CTL: Katalog für Client-Command-Vorlagen.
    Schrift: Geist und Geist Mono (Vercel, SIL OFL), lokal eingebunden, kein Abruf bei Dritten.
-   Formen: Eingaben und Knöpfe 8px, Flächen 12px, Marken und Filter 999px. Eine Akzentfarbe (Petrol), Statusfarben nur für echte Zustände. */
+   Symbole: eigene Linien-Icons im Stil von Lucide (ISC), inline als SVG.
+   Formen: Eingaben und Knöpfe 8px, Flächen 12px, Marken und Filter 999px. Eine Akzentfarbe (Petrol);
+   die Bereiche bekommen nur gedämpfte Farbtöne für ihr Symbol, Statusfarben bleiben echten Zuständen vorbehalten. */
 @font-face{font-family:"Geist";src:url("fonts/Geist-Variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
 @font-face{font-family:"Geist Mono";src:url("fonts/GeistMono-Variable.woff2") format("woff2");font-weight:100 900;font-display:swap}
 :root{
@@ -17,6 +19,7 @@
   --accent:#0D7468; --accent-ink:#FFFFFF; --accent-soft:#E2F1EE;
   --warn:#8A5A00; --warn-soft:#FBF0DA; --danger:#A33A2C; --danger-soft:#F8E3DE;
   --info:#285E8E; --info-soft:#E5EDF6; --ok:#2E6A3D; --ok-soft:#E2F0E5; --mark:#FFE7A0;
+  --ico-bg:0.95 0.035; --ico-fg:0.46 0.1;
   --shadow:0 1px 2px rgb(22 25 29 / .04), 0 4px 16px rgb(22 25 29 / .05);
   --f-ui:"Geist",ui-sans-serif,"Segoe UI",system-ui,sans-serif;
   --f-mono:"Geist Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
@@ -27,6 +30,7 @@
     --accent:#56C2B3; --accent-ink:#062420; --accent-soft:#12302C;
     --warn:#E2B15E; --warn-soft:#33280F; --danger:#EE8E7E; --danger-soft:#3A1F1A;
     --info:#8DB6E2; --info-soft:#172636; --ok:#84C994; --ok-soft:#16301C; --mark:#5A4B12;
+    --ico-bg:0.29 0.04; --ico-fg:0.84 0.09;
     --shadow:0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
     color-scheme:dark;
   }
@@ -36,6 +40,7 @@
   --accent:#56C2B3; --accent-ink:#062420; --accent-soft:#12302C;
   --warn:#E2B15E; --warn-soft:#33280F; --danger:#EE8E7E; --danger-soft:#3A1F1A;
   --info:#8DB6E2; --info-soft:#172636; --ok:#84C994; --ok-soft:#16301C; --mark:#5A4B12;
+  --ico-bg:0.29 0.04; --ico-fg:0.84 0.09;
   --shadow:0 1px 2px rgb(0 0 0 / .3), 0 6px 20px rgb(0 0 0 / .25);
   color-scheme:dark;
 }
@@ -46,6 +51,7 @@ button,input,select{font-family:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 a{color:var(--accent);text-underline-offset:2px}
 code,kbd,pre{font-family:var(--f-mono)}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round;flex:none}
 .wrap{max-width:1280px;margin:0 auto;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(24px,env(safe-area-inset-right,0px))}
 @media (max-width:640px){.wrap{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}}
 
@@ -63,7 +69,7 @@ code,kbd,pre{font-family:var(--f-mono)}
 /* Einstieg */
 .hero{padding-block:48px 8px}
 .hero h1{font:650 clamp(30px,4.2vw,44px)/1.1 var(--f-ui);letter-spacing:-.025em;margin:0;max-width:20ch;text-wrap:balance}
-.hero .sub{margin:14px 0 0;font-size:17px;line-height:1.55;color:var(--muted);max-width:56ch}
+.hero .sub{margin:14px 0 0;font-size:17px;line-height:1.55;color:var(--muted);max-width:60ch}
 @media (max-width:640px){.hero{padding-block:32px 4px}.hero .sub{font-size:16px}}
 
 /* Suche */
@@ -77,25 +83,43 @@ code,kbd,pre{font-family:var(--f-mono)}
 @media (max-width:640px){.sbox kbd{display:none}.sbox input{font-size:16px;padding-right:16px}}
 .quick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;font-size:13px;color:var(--muted);max-width:980px}
 .quick .lbl{margin-right:4px}
-.qa,.qq{font:500 13px/1 var(--f-ui);padding:7px 10px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;gap:6px;align-items:center;transition:border-color .15s,background-color .15s}
-.qa .n{font:500 11.5px/1 var(--f-mono);color:var(--muted)}
-.qa[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
-.qa[aria-pressed="true"] .n{color:inherit;opacity:.75}
-.qq{font-family:var(--f-mono);font-size:12.5px;background:transparent}
-.qq:hover,.qa:hover{border-color:var(--line-strong);background:var(--sunken)}
-.qa[aria-pressed="true"]:hover{background:var(--accent)}
+.qq{font:500 12.5px/1 var(--f-mono);padding:7px 10px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;transition:border-color .15s,background-color .15s}
+.qq:hover{border-color:var(--line-strong);background:var(--sunken)}
 .note{font-size:13px;color:var(--muted);margin:14px 0 0;max-width:90ch}
 
+/* Symbolkachel: Farbton je Bereich über --h */
+.ico{--h:190;flex:none;width:36px;height:36px;border-radius:10px;display:inline-grid;place-items:center;
+  background:oklch(var(--ico-bg) var(--h));color:oklch(var(--ico-fg) var(--h))}
+.ico svg.i{width:19px;height:19px}
+.ico.lg{width:52px;height:52px;border-radius:14px}
+.ico.lg svg.i{width:27px;height:27px;stroke-width:1.6}
+
+/* Bereiche */
+.areas-sec{margin-top:36px}
+.areas-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 12px}
+.areas-h h2{font:650 20px/1.2 var(--f-ui);letter-spacing:-.01em;margin:0}
+.areas-h p{margin:0;font-size:13px;color:var(--muted)}
+.areas{display:grid;grid-template-columns:repeat(auto-fill,minmax(228px,1fr));gap:10px}
+.area{position:relative;display:flex;gap:12px;align-items:flex-start;text-align:left;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);cursor:pointer;font:inherit;min-width:0;transition:border-color .15s,box-shadow .15s,background-color .15s}
+.area:hover{border-color:var(--line-strong);box-shadow:var(--shadow)}
+.area[aria-pressed="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);background:var(--accent-soft)}
+.area:disabled{opacity:.45;cursor:default;box-shadow:none}
+.a-t{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.a-t b{font-size:14.5px;font-weight:600;line-height:1.25}
+.a-t span{font-size:12.5px;color:var(--muted);line-height:1.35}
+.area .n{font:500 12px/1 var(--f-mono);color:var(--muted);align-self:flex-start;margin-top:2px;font-variant-numeric:tabular-nums}
+@media (max-width:640px){
+  .areas{grid-template-columns:1fr 1fr;gap:8px}
+  .area{display:grid;grid-template-columns:auto minmax(0,1fr);gap:2px 10px;align-items:center;padding:10px}
+  .area .ico{grid-row:1/3;width:32px;height:32px;border-radius:9px}
+  .a-t b{font-size:13.5px;hyphens:auto}
+  .a-t span{display:none}
+  .area .n{grid-column:2;margin:0;font-size:11.5px}
+}
+
 /* Katalog */
-.catalog{margin-top:36px}
+.catalog{margin-top:28px}
 .filters{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;justify-content:space-between;padding-block:14px;border-top:1px solid var(--line)}
-.chips{display:flex;flex-wrap:wrap;gap:6px;min-width:0}
-.chip{font:500 13px/1 var(--f-ui);padding:7px 11px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;gap:6px;align-items:center;transition:border-color .15s}
-.chip .n{font:500 11.5px/1 var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums}
-.chip:hover{border-color:var(--line-strong)}
-.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
-.chip[aria-pressed="true"] .n{color:inherit;opacity:.7}
-.chip:disabled{opacity:.4;cursor:default}
 .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
 .seg button{font:500 13px/1 var(--f-ui);padding:8px 11px;border:0;background:transparent;color:var(--muted);cursor:pointer;white-space:nowrap}
@@ -105,16 +129,17 @@ code,kbd,pre{font-family:var(--f-mono)}
 select{font:500 13px/1 var(--f-ui);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);max-width:100%}
 
 .layout{display:grid;gap:20px;padding-bottom:8px}
-@media (min-width:1000px){.layout{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-items:start}}
+@media (min-width:1000px){.layout{grid-template-columns:minmax(0,5fr) minmax(0,7fr);align-items:start}}
 .list{min-width:0}
 .rescount{font-size:13px;color:var(--muted);margin:2px 0 10px;font-variant-numeric:tabular-nums;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .rescount button{font:500 12px/1 var(--f-ui);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 8px;cursor:pointer}
 .cards{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
-.card{display:block;padding:14px 16px;color:inherit;text-decoration:none;border-bottom:1px solid var(--line);transition:background-color .12s}
+.card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0 14px;padding:14px 16px;color:inherit;text-decoration:none;border-bottom:1px solid var(--line);transition:background-color .12s}
 .card:last-child{border-bottom:0}
 .card:hover{background:var(--sunken)}
 .card[aria-current="true"]{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
 .card:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.c-body{min-width:0}
 .c-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between}
 .card h3{font-size:15px;font-weight:600;margin:0;line-height:1.35;min-width:0;overflow-wrap:anywhere}
 .src{flex:none;font:500 11.5px/1 var(--f-ui);padding:4px 8px;border-radius:999px;margin-top:1px;white-space:nowrap}
@@ -142,7 +167,7 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
 .skel i:nth-child(3n+1){width:62%}.skel i:nth-child(3n+2){width:88%}.skel i:nth-child(3n){width:40%;margin-bottom:12px}
 
 /* Detail */
-.detail{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:24px 26px}
+.detail{--dpad:24px;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:var(--dpad) 26px}
 .detail>*{animation:fade .18s ease-out}
 @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 .back{display:inline-flex;gap:6px;align-items:center;font:500 14px/1 var(--f-ui);border:0;background:transparent;color:var(--accent);padding:6px 0;margin-bottom:12px;cursor:pointer}
@@ -153,12 +178,14 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
 @media (max-width:999.98px){
   .detail{display:none}
   body.show-detail{overflow:hidden}
-  body.show-detail .detail{display:block;position:fixed;inset:0;z-index:40;border:0;border-radius:0;overflow:auto;background:var(--surface);
+  body.show-detail .detail{--dpad:12px;display:block;position:fixed;inset:0;z-index:40;border:0;border-radius:0;overflow:auto;background:var(--surface);
     padding:calc(env(safe-area-inset-top,0px) + 12px) 16px calc(env(safe-area-inset-bottom,0px) + 32px)}
 }
+.dhead{display:flex;gap:14px;align-items:center}
 .dmeta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .dmeta .v{font-family:var(--f-mono);font-size:12.5px}
-.detail h2{font-size:24px;line-height:1.2;margin:8px 0 8px;font-weight:650;letter-spacing:-.02em;text-wrap:balance}
+.dmeta b{color:var(--ink);font-weight:600}
+.detail h2{font-size:24px;line-height:1.2;margin:14px 0 8px;font-weight:650;letter-spacing:-.02em;text-wrap:balance}
 .lead{margin:0;font-size:15px;max-width:66ch}
 .sec{margin-top:24px;padding-top:18px;border-top:1px solid var(--line)}
 .sec>h3{font:600 14px/1.3 var(--f-ui);margin:0 0 10px;display:flex;gap:8px;align-items:center}
@@ -168,7 +195,16 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
 .notice{margin:0 0 12px;font-size:13.5px;background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:10px 12px}
 .status{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--muted);margin:12px 0 0}
 
-.install{margin-top:22px;background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:18px}
+/* Reiter im Detail */
+.tabs{position:sticky;top:calc(-1 * var(--dpad));z-index:3;display:flex;gap:2px;margin:20px -4px 0;padding:0 4px;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none}
+.tab{font:550 14px/1 var(--f-ui);padding:12px 10px 11px;border:0;background:none;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;display:inline-flex;gap:7px;align-items:center;white-space:nowrap}
+.tab svg.i{width:16px;height:16px}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+@media (max-width:420px){.tab{padding-inline:7px;font-size:13.5px}.tab svg.i{display:none}}
+.panel{padding-top:18px}
+
+.install{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:18px}
 .install h3{font-size:15px;font-weight:600;margin:0 0 4px}
 .install .hint{margin:0 0 14px;font-size:13.5px;color:var(--muted);max-width:66ch}
 .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
@@ -183,6 +219,8 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
 @media (max-width:480px){.prompt{flex-direction:column}}
 .btn{font:600 13.5px/1 var(--f-ui);padding:10px 14px;border-radius:8px;border:1px solid transparent;background:var(--accent);color:var(--accent-ink);cursor:pointer;flex:none;text-decoration:none;display:inline-flex;gap:6px;align-items:center;white-space:nowrap;transition:filter .15s,transform .1s}
 .btn.ghost{background:var(--surface);color:var(--ink);border-color:var(--line-strong)}
+.btn.sm{font-size:12.5px;padding:6px 9px;font-weight:550}
+.btn svg.i{width:15px;height:15px}
 .btn:hover{filter:brightness(1.06)}
 .btn.ghost:hover{filter:none;background:var(--sunken)}
 .btn:active{transform:translateY(1px)}
@@ -190,25 +228,10 @@ mark{background:var(--mark);color:inherit;border-radius:2px;padding:0 1px}
 details summary{cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);margin-top:12px}
 details .row{display:flex;justify-content:flex-end;margin-top:8px}
 pre{font:12.5px/1.6 var(--f-mono);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px 14px;overflow:auto;margin:8px 0 0;max-height:380px;color:var(--ink);tab-size:4}
-
-.tree{list-style:none;margin:0;padding:0}
-.tree .tree{margin-left:4px;padding-left:18px;border-left:1px dashed var(--line-strong)}
-.st{display:flex;gap:10px;align-items:flex-start;padding:7px 0}
-.dot{width:9px;height:9px;border-radius:3px;margin-top:7px;flex:none;background:var(--muted);display:inline-block}
-.f-exec{background:var(--warn)}.f-reg{background:var(--info)}.f-file{background:var(--accent)}.f-svc{background:var(--ok)}
-.f-flow{background:transparent;border:2px solid var(--muted)}.f-var{background:var(--line);border:2px solid var(--muted)}
-.st-main{flex:1;min-width:0}
-.st-d{display:block;font-weight:500;font-size:14px}
-.st-x{display:block;font:12.5px/1.5 var(--f-mono);color:var(--muted);overflow-wrap:anywhere}
 .var{color:var(--accent);font-weight:500}
 .ph{color:var(--warn);font-weight:500}
-.st-c{font:12px/1.8 var(--f-mono);color:var(--muted);flex:none}
-@media (max-width:560px){.st-c{display:none}}
-.st-code summary{margin-top:4px;font-size:12.5px}
-.st-code pre{max-height:340px;white-space:pre;font-size:12px}
-.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);margin-top:12px}
-.legend span{display:inline-flex;gap:6px;align-items:center}
-.legend .dot{margin-top:0}
+.ph.set{color:var(--accent);background:var(--accent-soft);border-radius:3px;padding:0 2px}
+.ph.cf{color:var(--info)}
 
 .desc{font-size:14.5px;max-width:70ch}
 .desc h4{font:600 14px/1.35 var(--f-ui);margin:16px 0 4px}
@@ -229,15 +252,82 @@ pre{font:12.5px/1.6 var(--f-mono);background:var(--bg);border:1px solid var(--li
 .stats{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .stats b{color:var(--ink);font-weight:600}
 
+/* Bauplan */
+.bp-top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.bp-top p{margin:0;font-size:14px;color:var(--muted);max-width:60ch;flex:1;min-width:220px}
+.phases{list-style:none;margin:18px 0 0;padding:0;counter-reset:ph}
+.phase{position:relative;padding:0 0 24px 40px;counter-increment:ph}
+.phase::before{content:counter(ph);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:999px;background:var(--ink);color:var(--bg);font:600 13px/26px var(--f-ui);text-align:center}
+.phase::after{content:"";position:absolute;left:12.5px;top:32px;bottom:6px;width:1px;background:var(--line)}
+.phase:last-child{padding-bottom:4px}
+.phase:last-child::after{display:none}
+.phase>h4{font:600 15.5px/1.35 var(--f-ui);margin:2px 0 6px}
+.phase>p{margin:0 0 10px;color:var(--muted);font-size:14px;max-width:66ch}
+.phase>ul{margin:0 0 6px;padding-left:18px;font-size:14px}
+.phase>ul li{margin:5px 0}
+.phase .fields{margin-top:10px}
+.copyline{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px 6px 6px 12px;background:var(--bg);margin-top:8px}
+.copyline small{display:block;font-size:12px;color:var(--muted)}
+.copyline span{flex:1;min-width:0;font-size:14px;overflow-wrap:anywhere}
+.vtable{width:100%;border-collapse:collapse;font-size:13.5px;margin-top:4px}
+.vtable th{text-align:left;font-weight:500;color:var(--muted);font-size:12.5px;padding:0 12px 6px 0;border-bottom:1px solid var(--line)}
+.vtable td{padding:6px 12px 6px 0;border-bottom:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere}
+.vtable td:first-child{font-family:var(--f-mono);font-size:12.5px;white-space:nowrap}
+.vtable td.mono{font-family:var(--f-mono);font-size:12.5px}
+.vtable tr:last-child td{border-bottom:0}
+.vtable .hint{color:var(--muted);font-size:12.5px;font-family:var(--f-ui)}
+.bsteps{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}
+.bsteps .bsteps{margin:8px 0 0 6px;padding-left:12px;border-left:2px solid var(--line)}
+.bstep{min-width:0}
+.bcard{display:grid;grid-template-columns:auto auto minmax(0,1fr);column-gap:10px;align-items:start;border:1px solid var(--line);border-radius:10px;background:var(--surface);padding:10px 12px}
+.bs-head{display:contents}
+.bs-no{grid-column:1;font:500 12px/1 var(--f-mono);color:var(--muted);min-width:14px;padding-top:9px;font-variant-numeric:tabular-nums}
+.bs-head .sico{grid-column:2}
+.bs-t{grid-column:3}
+.sico{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none;background:var(--sunken);color:var(--muted)}
+.sico svg.i{width:17px;height:17px}
+.sico.f-exec{background:var(--warn-soft);color:var(--warn)}
+.sico.f-reg{background:var(--info-soft);color:var(--info)}
+.sico.f-file{background:var(--accent-soft);color:var(--accent)}
+.sico.f-svc{background:var(--ok-soft);color:var(--ok)}
+.sico.f-stop{background:var(--danger-soft);color:var(--danger)}
+.bs-t{min-width:0}
+.bs-cmd{display:block;font-weight:600;font-size:14px;line-height:1.35}
+.bs-desc{display:block;font-size:13px;color:var(--muted);line-height:1.4;overflow-wrap:anywhere}
+.bs-body{grid-column:3;min-width:0}
+.bs-rows .hint{color:var(--muted);font-family:var(--f-ui);font-size:12.5px}
+@media (max-width:560px){.bs-body{grid-column:2/-1}.bs-no{display:none}}
+.bs-rows{margin:10px 0 0;display:grid;grid-template-columns:minmax(120px,max-content) minmax(0,1fr);gap:5px 14px;font-size:13.5px}
+.bs-rows dt{color:var(--muted)}
+.bs-rows dd{margin:0;font-size:13.5px;line-height:1.5;overflow-wrap:anywhere;min-width:0}
+.bs-rows dd.mono{font-family:var(--f-mono);font-size:12.5px}
+.bs-rows dd.memo{white-space:pre-wrap}
+@media (max-width:480px){.bs-rows{grid-template-columns:minmax(0,1fr);gap:0}.bs-rows dt{font-size:12px;margin-top:6px}}
+.checks{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;padding:0;list-style:none}
+.checks li{display:inline-flex;gap:5px;align-items:center;font-size:12.5px;padding:3px 9px 3px 6px;border-radius:999px;background:var(--sunken);color:var(--ink);line-height:1.35}
+.checks svg.i{width:14px;height:14px;color:var(--accent);stroke-width:2.2}
+.bs-note{margin:8px 0 0;font-size:12.5px;color:var(--muted);line-height:1.45}
+.bs-code{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);min-width:0}
+.bs-codehead{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 6px 6px 12px;font-size:12.5px;color:var(--muted)}
+.bs-codehead .bt{display:flex;gap:6px}
+.bs-code pre{margin:0;border:0;border-top:1px solid var(--line);border-radius:0 0 8px 8px;white-space:pre;font-size:12px;max-height:420px}
+.bs-code pre[hidden]{display:none}
+.tip{display:flex;gap:10px;align-items:flex-start;margin:12px 0 0;font-size:13.5px;background:var(--info-soft);color:var(--info);border-radius:8px;padding:10px 12px}
+.tip svg.i{width:17px;height:17px;margin-top:1px}
+
 /* Startansicht im Detailfenster */
 .welcome h2{margin:0 0 6px}
 .welcome .lead{color:var(--muted)}
-.welcome dl{margin:18px 0 0;display:grid;gap:14px}
+.welcome dl{margin:18px 0 0;display:grid;gap:16px}
+.welcome dl>div{display:flex;gap:14px;align-items:flex-start}
 .welcome dt{font-weight:600;font-size:14.5px}
 .welcome dd{margin:2px 0 0;color:var(--muted);font-size:14px;max-width:62ch}
-.welcome .newest a{display:flex;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink);font-weight:500;font-size:14px}
+.welcome .newest a{display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--line);text-decoration:none;color:var(--ink);font-weight:500;font-size:14px}
+.welcome .newest a .ico{width:30px;height:30px;border-radius:8px}
+.welcome .newest a .ico svg.i{width:16px;height:16px}
+.welcome .newest a .t{flex:1;min-width:0}
 .welcome .newest a:last-child{border-bottom:0}
-.welcome .newest a span{font-weight:400;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.welcome .newest a span.d{font-weight:400;font-size:12.5px;color:var(--muted);white-space:nowrap}
 .welcome .newest a:hover{color:var(--accent)}
 
 /* ACMP MCP */
@@ -268,12 +358,23 @@ footer nav{display:flex;gap:18px;flex-wrap:wrap}
 footer a{color:var(--muted)}
 footer a:hover{color:var(--ink)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important;scroll-behavior:auto!important}}
+
+/* Drucken: nur das Detailfenster (Bauplan) */
+@media print{
+  .nav,.hero,.areas-sec,.filters,.list,.mcp,.contrib,footer,.tabs,.back,.no-print{display:none!important}
+  body{background:#fff;color:#000;overflow:visible!important}
+  .layout{display:block}
+  .detail,body.show-detail .detail{display:block!important;position:static!important;max-height:none!important;overflow:visible!important;border:0!important;padding:0!important}
+  .bcard,.bs-code{break-inside:avoid}
+  .bs-code pre{max-height:none;white-space:pre-wrap;display:block!important}
+}
 </style>
 
 <header class="nav">
   <div class="wrap">
     <a class="word" href="#top"><b>ACMP CTL</b><span>Community Template Library</span></a>
     <nav aria-label="Seitenbereiche">
+      <a href="#bereiche">Bereiche</a>
       <a href="#vorlagen">Vorlagen</a>
       <a class="opt" href="#mcp">ACMP MCP</a>
       <a class="opt" href="#beitragen">Beitragen</a>
@@ -286,14 +387,13 @@ footer a:hover{color:var(--ink)}
   <div class="wrap">
     <section class="hero" aria-labelledby="hero-h">
       <h1 id="hero-h">Client Commands für ACMP, die man vorher lesen kann.</h1>
-      <p class="sub">Fertige Vorlagen, jeder Schritt im Klartext. Eure KI legt sie über den ACMP MCP als Entwurf an.</p>
+      <p class="sub">Fertige Vorlagen, jeder Schritt im Klartext. Mit Bauplan zum Nachbauen in der ACMP-Console, oder eure KI legt sie über den ACMP MCP als Entwurf an.</p>
       <div class="search">
         <div class="sbox">
           <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Anwendung, Aufgabe, Dienst oder Registry-Pfad" aria-label="Vorlagen durchsuchen">
           <kbd>/</kbd>
         </div>
-        <div class="quick" id="quick-apps"><span class="lbl">Anwendungen</span></div>
         <div class="quick"><span class="lbl">Häufig gesucht</span>
           <button type="button" class="qq" data-q="Spooler">Spooler</button>
           <button type="button" class="qq" data-q="winget">winget</button>
@@ -305,12 +405,16 @@ footer a:hover{color:var(--ink)}
       </div>
     </section>
 
+    <section class="areas-sec" id="bereiche" aria-labelledby="areas-h">
+      <div class="areas-h"><h2 id="areas-h">Bereiche</h2><p>Ein Klick filtert die Liste. Manche Vorlagen stehen in mehreren Bereichen.</p></div>
+      <div class="areas" id="areas" role="group" aria-label="Bereich wählen"></div>
+    </section>
+
     <section class="catalog" id="vorlagen" aria-label="Vorlagen">
       <div class="filters">
-        <div class="chips" id="chips" role="group" aria-label="Kategorie"></div>
+        <div class="seg" id="seg" role="group" aria-label="Quelle"></div>
         <div class="controls">
           <select id="app" aria-label="Anwendung"><option value="">Alle Anwendungen</option></select>
-          <div class="seg" id="seg" role="group" aria-label="Quelle"></div>
           <select id="sort" aria-label="Sortierung">
             <option value="rel">Relevanz</option>
             <option value="new">Neueste zuerst</option>
@@ -329,8 +433,8 @@ footer a:hover{color:var(--ink)}
 
     <section class="mcp" id="mcp" aria-labelledby="mcp-h">
       <div>
-        <h2 id="mcp-h">Installiert wird mit dem ACMP MCP</h2>
-        <p class="intro">Der ACMP MCP verbindet eure KI mit der ACMP Public API. Ihr fragt in normaler Sprache, die KI holt die Antwort aus ACMP. Die Vorlagen hier sind eine Sache, die damit geht.</p>
+        <h2 id="mcp-h">Schneller geht es mit dem ACMP MCP</h2>
+        <p class="intro">Der ACMP MCP verbindet eure KI mit der ACMP Public API. Ihr fragt in normaler Sprache, die KI holt die Antwort aus ACMP. Statt eine Vorlage nach Bauplan abzutippen, legt sie die KI als Entwurf an.</p>
         <dl class="caps">
           <div><dt>Fragen statt klicken</dt><dd>Clients, Software, Schwachstellen, BitLocker, Tickets und Assets. „Wo ist 7-Zip drauf?“ reicht.</dd></div>
           <div><dt>Client Commands und Kiosk</dt><dd>Entwürfe anlegen, vorhandene Commands als neue Version korrigieren, freigeben, Kiosk-Einträge pflegen.</dd></div>
@@ -351,7 +455,7 @@ footer a:hover{color:var(--ink)}
 
     <section class="contrib" id="beitragen" aria-labelledby="contrib-h">
       <h2 id="contrib-h">Eigene Commands beitragen</h2>
-      <p>Jede Vorlage ist eine lesbare JSON-Datei. Ihr lest euren Command mit dem MCP aus und wandelt ihn um. Kennwörter, Konten und interne Pfade werden dabei entfernt oder zu Parametern. Die Prüfung läuft automatisch, danach schaut ein Mensch drüber.</p>
+      <p>Jede Vorlage ist eine lesbare JSON-Datei. Ihr lest euren Command mit dem MCP aus und wandelt ihn um. Kennwörter, Konten und interne Pfade werden dabei entfernt oder zu Parametern. Die Prüfung läuft automatisch, danach schaut ein Mensch drüber. Den Bauplan erzeugt die Seite selbst aus den Schritten.</p>
       <pre>node tools/from-decode.mjs mein-command.decode.json --id mein-command --category Wartung
 node tools/build.mjs --check</pre>
       <div class="row">
@@ -381,16 +485,57 @@ const fmtDate=d=>{const [y,m,t]=String(d).split('-');return `${t}.${m}.${y}`};
 const nf=new Intl.NumberFormat('de-DE');
 const $=s=>document.querySelector(s);
 const mqWide=window.matchMedia('(min-width: 1000px)');
+const yes=v=>String(v).toLowerCase()==='true';
+const store={get(k){try{return localStorage.getItem(k)||''}catch(e){return ''}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 
-let CATS=[],ALL=[],BYKEY={},APPS=[];
-const state={q:'',cat:'Alle',app:'',src:'all',sort:'rel',sel:null,folder:'',params:{}};
-try{state.folder=localStorage.getItem('ctl-folder')||''}catch(e){}
+/* Linien-Icons, 24er Raster */
+const ICONS={
+  package:'<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  monitor:'<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/>',
+  shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+  tree:'<rect x="16" y="16" width="6" height="6" rx="1"/><rect x="2" y="16" width="6" height="6" rx="1"/><rect x="9" y="2" width="6" height="6" rx="1"/><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>',
+  browser:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 9h20"/><path d="M6 6.5h.01"/><path d="M9 6.5h.01"/><path d="M12 6.5h.01"/>',
+  network:'<path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.86a10 10 0 0 1 14 0"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/>',
+  clipboard:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M12 11h4"/><path d="M12 16h4"/><path d="M8 11h.01"/><path d="M8 16h.01"/>',
+  bell:'<path d="M10.27 21a2 2 0 0 0 3.46 0"/><path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33"/>',
+  kiosk:'<path d="M3 9.5 4.6 4h14.8L21 9.5"/><path d="M3 9.5h18v.5a2.5 2.5 0 0 1-4.5 1.5 2.5 2.5 0 0 1-4.5 0 2.5 2.5 0 0 1-4.5 0A2.5 2.5 0 0 1 3 10z"/><path d="M5 12.4V20h14v-7.6"/><path d="M10 20v-4.5h4V20"/>',
+  rocket:'<path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>',
+  terminal:'<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/>',
+  branch:'<circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="6" r="2.5"/><path d="M6 3v12.5"/><path d="M18 8.5A9 9 0 0 1 9 17.5"/>',
+  corner:'<path d="M4 4v7a4 4 0 0 0 4 4h12"/><path d="m15 10 5 5-5 5"/>',
+  stop:'<circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1"/>',
+  key:'<circle cx="7.5" cy="15.5" r="4.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>',
+  database:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+  message:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h5"/>',
+  progress:'<rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h7"/>',
+  braces:'<path d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1"/><path d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1"/>',
+  folder:'<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  power:'<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
+  wrench:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+  text:'<path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>',
+  sparkle:'<path d="M9.94 14.06 4 12l5.94-2.06L12 4l2.06 5.94L20 12l-5.94 2.06L12 20z"/><path d="M19 3v4"/><path d="M21 5h-4"/>',
+  check:'<path d="M20 6 9 17l-5-5"/>',
+  copy:'<rect x="8" y="8" width="14" height="14" rx="2"/><path d="M4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2"/>',
+  printer:'<path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6"/><rect x="6" y="14" width="12" height="8" rx="1"/>',
+  info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+};
+const svg=(n,cls='i')=>`<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n]||ICONS.braces}</svg>`;
+const tile=(a,cls='')=>a?`<span class="ico ${cls}" style="--h:${a.hue}">${svg(a.icon)}</span>`:`<span class="ico ${cls}">${svg('braces')}</span>`;
 
-const FAM={exec:'TExecuteCommand TExecutePowerShell TExecuteBatchCommand TInstallMsiPackage TDelphiScript TRunClientCommand',
- reg:'TModifyReg TSetProjectVarFromRegistry TDeleteRegistryValue TIfRegKeyExists TIfRegValueNameExists',
- file:'TDownloadFile TUploadFile TDeleteFilesCommand TRenameFolder TRenameFile TDeleteDir TMakeDir TCopySingleFile TCopyFileList TCopyFolder TExtractZipArchive',
- svc:'TControlNTService TEnqueueShutDown',
- flow:'TActionIf TActionElse TActionSwitch TActionCase TActionGroup TActionExitScript TIsSoftwareInstalledCommand TIfDirectoryExists TIfFileExists TisOPSystem TIsOsArchitecture'};
+let AREAS=[],AREA={},ALL=[],BYKEY={},APPS=[];
+const TABS=[['bauplan','Bauplan','wrench'],['beschreibung','Beschreibung','text'],['ki','Mit KI installieren','sparkle']];
+const state={q:'',area:'',app:'',src:'all',sort:'rel',sel:null,tab:'bauplan',folder:store.get('ctl-folder'),params:{}};
+if(TABS.some(t=>t[0]===store.get('ctl-tab'))) state.tab=store.get('ctl-tab');
+
+const FAM={exec:'TExecuteCommand TExecutePowerShell TExecuteBatchCommand TInstallMsiPackage TUninstallMSIProduct TDelphiScript TRunClientCommand',
+ reg:'TModifyReg TSetProjectVarFromRegistry TDeleteRegistryValue TIfRegKeyExists TIfRegValueNameExists TModifyIni',
+ file:'TDownloadFile TUploadFile TDeleteFilesCommand TRenameFolder TRenameFile TDeleteDir TMakeDir TCopySingleFile TCopyFileList TCopyFolder TExtractZipArchive TCreateZipArchiveCommand TSetNTFSFolderPermissions TCreateLink',
+ svc:'TControlNTService TEnqueueShutDown TEnqueueClientTask TUpdateWindowsCommand',
+ stop:'TActionExitScript'};
 const FAMS=Object.fromEntries(Object.entries(FAM).map(([k,v])=>[k,new Set(v.split(' '))]));
 const fam=c=>{for(const [k,set] of Object.entries(FAMS)) if(set.has(c)) return k; return 'var'};
 const flagHtml=f=>f.length?`<div class="flags">${f.map(([c,t])=>`<span class="flag ${c}">${esc(t)}</span>`).join('')}</div>`:'';
@@ -399,12 +544,12 @@ const appsHtml=(apps,btn)=>apps.length?`<div class="apps">${apps.map(a=>btn
   :`<span class="app">${esc(a.name)}</span>`).join('')}</div>`:'';
 
 function load(data){
-  CATS=data.categories;
+  AREAS=data.areas||[]; AREA=Object.fromEntries(AREAS.map(a=>[a.id,a]));
   const lib=data.templates.map(t=>({key:t.id,src:'lib',name:t.name,sum:t.summary,cat:t.category,date:t.updated,author:t.author?.name||'',
     tags:t.tags||[],apps:t.applications||[],v:t.version,status:t.status,params:t.parameters||[],req:t.requires||{},files:t.files||[],
-    steps:t.steps,flat:flat(t.steps),flags:t.flags||[],raw:t}));
+    steps:t.steps,flat:flat(t.steps),flags:t.flags||[],areas:t.areas||[],area:t.area,raw:t}));
   const cf=data.community.entries.map(e=>({key:'filebase-'+e.id,src:'cf',fid:e.id,name:e.title,sum:e.summary,cat:e.category,date:e.date,author:e.author,
-    dl:e.downloads,cm:e.comments,dep:e.requires||[],sims:e.files||[],tags:e.tags||[],apps:e.applications||[],
+    dl:e.downloads,cm:e.comments,dep:e.requires||[],sims:e.files||[],tags:e.tags||[],apps:e.applications||[],areas:e.areas||[],area:e.area,
     flags:[...(e.requires?.length?[['',e.requires.length===1?'1 Voraussetzung':e.requires.length+' Voraussetzungen']]:[]),...((e.tags||[]).includes('Premium')?[['','Premium']]:[])]}));
   state.entryUrl=data.community.entryUrl;
   ALL=[...lib,...cf];
@@ -412,22 +557,17 @@ function load(data){
   const am=new Map();
   for(const i of ALL){
     i._n=norm(i.name); i._a=norm(i.apps.map(a=>a.name+' '+(a.vendor||'')).join(' '));
-    i._t=norm([i.cat,...i.tags].join(' '));
+    i._t=norm([i.cat,...i.tags,...i.areas.map(a=>AREA[a]?.name||'')].join(' '));
     i._s=norm([i.sum,...(i.dep||[]),...(i.sims||[]),...(i.req?.notes||[]),...(i.req?.customFields||[]).map(c=>c.name),...(i.params||[]).map(p=>p.name+' '+p.description)].join(' '));
-    i._st=(i.flat||[]).map(s=>({s,t:norm([s.description,s.summary,s.class].join(' '))}));
+    i._st=(i.flat||[]).map(s=>({s,t:norm([s.description,s.summary,s.class,CMD[s.class]?.[0]].join(' '))}));
     for(const a of i.apps){const e=am.get(a.name)||{name:a.name,vendor:a.vendor||'',n:0};e.n++;am.set(a.name,e)}
   }
-  APPS=[...am.values()].sort((a,b)=>b.n-a.n||a.name.localeCompare(b.name,'de'));
-  $('#app').innerHTML='<option value="">Alle Anwendungen</option>'+[...APPS].sort((a,b)=>a.name.localeCompare(b.name,'de'))
+  APPS=[...am.values()].sort((a,b)=>a.name.localeCompare(b.name,'de'));
+  $('#app').innerHTML='<option value="">Alle Anwendungen</option>'+APPS
     .map(a=>`<option value="${esc(a.name)}">${esc(a.name)}${a.vendor?' ('+esc(a.vendor)+')':''}, ${a.n}</option>`).join('');
-  renderQuickApps();
   const nLib=lib.length,nInst=lib.filter(t=>t.status!=='beispiel').length;
   $('#note').textContent=`${nInst} installierbare Vorlagen${nInst<nLib?` und ${nLib-nInst} Format-Beispiele`:''}, dazu ${cf.length} Verweise auf die Aagon Community Filebase. Gesucht wird auch in jedem Schritt, Pfad und Skript.`;
   run(); fromHash();
-}
-function renderQuickApps(){
-  $('#quick-apps').innerHTML='<span class="lbl">Anwendungen</span>'+APPS.slice(0,9).map(a=>
-    `<button type="button" class="qa" data-app="${esc(a.name)}" aria-pressed="${state.app===a.name}">${esc(a.name)} <span class="n">${a.n}</span></button>`).join('');
 }
 
 function hl(text,raw){
@@ -436,7 +576,6 @@ function hl(text,raw){
   const re=new RegExp('('+raw.map(t=>t.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|')+')','gi');
   return text.split(re).map((p,ix)=>ix%2?'<mark>'+esc(p)+'</mark>':esc(p)).join('');
 }
-const deco=h=>h.replace(/%[A-Za-z0-9_]+%/g,m=>`<span class="var">${m}</span>`).replace(/\{\{[A-Z0-9_]+\}\}/g,m=>`<span class="ph">${m}</span>`);
 
 function match(i,toks){
   if(!toks.length) return {score:0,hit:null};
@@ -463,21 +602,20 @@ function run(){
     if(state.src!=='all'&&i.src!==state.src) continue;
     pre.push({i,...m});
   }
-  const counts={}; pre.forEach(r=>counts[r.i.cat]=(counts[r.i.cat]||0)+1);
-  let res=state.cat==='Alle'?pre:pre.filter(r=>r.i.cat===state.cat);
+  const counts={}; pre.forEach(r=>r.i.areas.forEach(a=>counts[a]=(counts[a]||0)+1));
+  let res=state.area?pre.filter(r=>r.i.areas.includes(state.area)):pre;
   const libFirst=(a,b)=>(a.i.src===b.i.src?0:a.i.src==='lib'?-1:1);
   if(state.sort==='new') res.sort((a,b)=>b.i.date.localeCompare(a.i.date));
   else if(state.sort==='name') res.sort((a,b)=>a.i.name.localeCompare(b.i.name,'de'));
   else res.sort((a,b)=>(b.score-a.score)||libFirst(a,b)||((b.i.dl||0)-(a.i.dl||0))||b.i.date.localeCompare(a.i.date));
-  renderChips(counts,pre.length); renderSeg(srcCount); renderCards(res,raw);
+  renderAreas(counts); renderSeg(srcCount); renderCards(res,raw);
   $('#app').value=state.app;
-  document.querySelectorAll('.qa').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.app===state.app)));
   if(!state.sel) renderDetail();
   markCurrent();
 }
-function renderChips(counts,total){
-  const all=`<button type="button" class="chip" data-cat="Alle" aria-pressed="${state.cat==='Alle'}">Alle <span class="n">${total}</span></button>`;
-  $('#chips').innerHTML=all+CATS.map(c=>{const n=counts[c]||0;return `<button type="button" class="chip" data-cat="${esc(c)}" aria-pressed="${state.cat===c}" ${n||state.cat===c?'':'disabled'}>${esc(c)} <span class="n">${n}</span></button>`}).join('');
+function renderAreas(counts){
+  $('#areas').innerHTML=AREAS.map(a=>{const n=counts[a.id]||0,on=state.area===a.id;
+    return `<button type="button" class="area" data-area="${esc(a.id)}" aria-pressed="${on}" ${n||on?'':'disabled'}>${tile(a)}<span class="a-t"><b>${esc(a.name)}</b><span>${esc(a.text)}</span></span><span class="n">${n}</span></button>`}).join('');
 }
 function renderSeg(sc){
   const opts=[['all','Alle'],['lib','Vorlagen'],['cf','Filebase']];
@@ -510,18 +648,13 @@ function md(text){
   flushP();flushL();
   return out.join('');
 }
-/* Skripttext eines Schritts (PowerShell, Batch), sonst null */
-function stepCode(s){
-  const f=s.fields||{}; const v=f.BatchLines??f.Batchlines;
-  if(Array.isArray(v)&&v.length) return v.join('\n');
-  if(typeof v==='string'&&v.trim()) return v;
-  return null;
-}
 function renderCards(res,raw){
   const n=res.length;
   const parts=[n===1?'1 Treffer':`${nf.format(n)} Treffer`];
   if(state.q.trim()) parts.push(`für „${esc(state.q.trim())}“`);
-  let extra=state.app?` <button type="button" data-clear-app>Anwendung: ${esc(state.app)} ✕</button>`:'';
+  let extra='';
+  if(state.area&&AREA[state.area]) extra+=` <button type="button" data-clear-area>Bereich: ${esc(AREA[state.area].name)} ✕</button>`;
+  if(state.app) extra+=` <button type="button" data-clear-app>Anwendung: ${esc(state.app)} ✕</button>`;
   $('#rescount').innerHTML=`<span>${parts.join(' ')}</span>${extra}`;
   if(!n){
     $('#cards').innerHTML=`<div class="empty"><p>Nichts gefunden. Probier einen Begriff aus einem Schritt, etwa einen Dienstnamen, einen Registry-Pfad oder „msiexec“, oder setz die Filter zurück.</p><button type="button" class="btn ghost" id="reset">Filter zurücksetzen</button></div>`;
@@ -532,25 +665,201 @@ function renderCards(res,raw){
       ?[i.cat,'v'+i.v,i.flat.length+' Schritte',i.author,fmtDate(i.date)]
       :[i.cat,i.author,fmtDate(i.date),nf.format(i.dl)+' Downloads'].concat(i.cm?[i.cm+(i.cm===1?' Kommentar':' Kommentare')]:[]);
     const hitHtml=hit?`<p class="hit"><b>Schritt</b>${hl(hit.description||hit.class,raw)}${hit.summary?': '+hl(hit.summary,raw):''}</p>`:'';
-    return `<a class="card" href="#${esc(i.key)}" data-key="${esc(i.key)}">
+    return `<a class="card" href="#${esc(i.key)}" data-key="${esc(i.key)}">${tile(AREA[i.area])}<div class="c-body">
       <div class="c-top"><h3>${hl(i.name,raw)}</h3>${srcBadge(i)}</div>
       <p class="sum">${hl(i.sum,raw)}</p>${hitHtml}${appsHtml(i.apps,false)}
-      <div class="meta">${meta.map(m=>`<span>${esc(m)}</span>`).join('')}</div>${flagHtml(i.flags)}</a>`;
+      <div class="meta">${meta.map(m=>`<span>${esc(m)}</span>`).join('')}</div>${flagHtml(i.flags)}</div></a>`;
   }).join('');
 }
 function markCurrent(){document.querySelectorAll('.card').forEach(c=>c.setAttribute('aria-current',c.dataset.key===state.sel?'true':'false'))}
 
-function tree(steps){
-  return `<ol class="tree">${steps.map(s=>{
-    const code=stepCode(s);
-    const codeHtml=code?`<details class="st-code"><summary>Skript anzeigen (${code.split('\n').length} Zeilen)</summary><pre>${deco(esc(code))}</pre></details>`:'';
-    return `<li><div class="st"><span class="dot f-${fam(s.class)}" aria-hidden="true"></span><div class="st-main"><span class="st-d">${deco(esc(s.description||s.class))}</span>${s.summary&&!code?`<span class="st-x">${deco(esc(s.summary))}</span>`:''}${codeHtml}</div><code class="st-c">${esc(s.class)}</code></div>${s.children?tree(s.children):''}</li>`;
-  }).join('')}</ol>`;
-}
-const legend=`<div class="legend"><span><i class="dot f-flow"></i>Ablauf</span><span><i class="dot f-exec"></i>Programme</span><span><i class="dot f-reg"></i>Registry</span><span><i class="dot f-file"></i>Dateien</span><span><i class="dot f-svc"></i>Dienste und Neustart</span><span><i class="dot f-var"></i>Variablen und Hinweise</span></div>`;
-
+/* ---------- Werte und Platzhalter ---------- */
 const GA='GLOBAL_ACCOUNT';
+let CUR=null;   // Vorlage im Detailfenster
 function pval(t,name,def){const o=state.params[t.key];return o&&name in o?o[name]:(def??'')}
+function phSpan(n){
+  const p=CUR?.params.find(x=>x.name===n); const v=CUR?pval(CUR,n,p?.default):'';
+  return `<span class="ph${v?' set':''}" data-ph="${esc(n)}" title="Parameter ${esc(n)}">${esc(v||`{{${n}}}`)}</span>`;
+}
+/* h ist schon escaped: %VAR% hervorheben, {{NAME}} durch den eingegebenen Wert ersetzen */
+const deco=h=>h.replace(/%[A-Za-z0-9_.]+%/g,m=>`<span class="var">${m}</span>`)
+  .replace(/\{\{CF:([^:}]+):([A-Za-z]+)\}\}/g,(m,f)=>`<span class="ph cf">Feld „${f}“</span>`)
+  .replace(/\{\{([A-Z][A-Z0-9_]*)\}\}/g,(m,n)=>n==='GLOBAL_ACCOUNT_ID'?'<span class="ph cf">globaler Account</span>':phSpan(n));
+const val=v=>deco(esc(v));
+const plain=v=>String(v??'').replace(/\{\{([A-Z][A-Z0-9_]*)\}\}/g,(m,n)=>{const p=CUR?.params.find(x=>x.name===n);return (CUR&&pval(CUR,n,p?.default))||m});
+function updatePlaceholders(name,v){
+  document.querySelectorAll(`[data-ph="${CSS.escape(name)}"]`).forEach(el=>{el.textContent=v||`{{${name}}}`;el.classList.toggle('set',!!v)});
+}
+function paramFields(i,withFolder){
+  const r=i.req;
+  return `<div class="fields">
+    ${withFolder?`<div><label for="inp-folder">Client-Command-Ordner</label><input id="inp-folder" value="${esc(state.folder)}" placeholder="z. B. Wartung"></div>`:''}
+    ${i.params.map(p=>`<div><label for="inp-p-${esc(p.name)}"><code>${esc(p.name)}</code></label><input id="inp-p-${esc(p.name)}" data-param="${esc(p.name)}" value="${esc(pval(i,p.name,p.default))}"${p.default?'':' placeholder="Wert eintragen"'}><div class="pd">${esc(p.description)}</div></div>`).join('')}
+    ${r.globalAccount&&withFolder?`<div><label for="inp-ga">Globaler Account</label><input id="inp-ga" data-param="${GA}" value="${esc(pval(i,GA,''))}" placeholder="Name in ACMP"><div class="pd">${esc(r.globalAccount)}</div></div>`:''}
+  </div>`;
+}
+
+/* ---------- Bauplan: Schritt in der Sprache der deutschen ACMP-Console ----------
+   Befehls- und Feldnamen stammen aus den Sprachdateien der ACMP-Console 6.9 (Sys\ScripterCommands\*.DE). */
+const REG_ROOT={'2147483648':'HKEY_CLASSES_ROOT','2147483649':'HKEY_CURRENT_USER','2147483650':'HKEY_LOCAL_MACHINE','2147483651':'HKEY_USERS','2147483653':'HKEY_CURRENT_CONFIG'};
+const REG_TYPE={'0':'REG_SZ','2':'REG_DWORD'};
+const MB_TYPE={'0':'Warnung','1':'Fehler','2':'Information','3':'Bestätigen','4':'Benutzerdefiniert'};
+const APPLY_TO={atThisFolderSubfoldersAndFiles:'Diesen Ordner, Unterordner und Dateien',atThisFolderOnly:'Nur diesen Ordner',atThisFolderAndSubfolders:'Diesen Ordner und Unterordner',atThisFolderAndFiles:'Diesen Ordner und Dateien'};
+const lines=v=>Array.isArray(v)?v.map(String):typeof v==='string'&&v!==''?v.split(/\r?\n/):[];
+const isVar=v=>typeof v==='string'&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(v.trim());
+function runAs(f,o){
+  if(yes(f.RunAsGlobalAccount)) o.text('Ausführen als','globaler Account, unter Impersonierungsoptionen wählen');
+  if(yes(f.RunAsDifferentUser)) o.text('Als anderer Benutzer ausführen',f.RunAsUsername||'Benutzer eintragen');
+  o.chk('Erhöhte Rechte anfordern',f.RunAsRequestElevatedRights??f.RunAs_RequestElevatedRights);
+}
+function buttons(f){
+  const b=parseInt(f.VisibleButtons,10)||0, cap={1:f.Button_ok_caption||'OK',2:f.Button_yes_caption||'Ja',4:f.Button_no_caption||'Nein',8:f.Button_cancel_caption||'Abbrechen'};
+  const std={1:'OK',2:'Ja',4:'Nein',8:'Abbrechen'};
+  return [1,2,4,8].filter(x=>b&x).map(x=>cap[x]===std[x]?std[x]:`${std[x]} (Beschriftung „${cap[x]}“)`).join(', ');
+}
+const CMD={
+  TExecutePowerShell:['Powershell-Script ausführen',(f,o)=>{o.code('Skript',f.BatchLines,'ps');o.var('Variable für den Exit Code',f.ExitCode);o.var('Variable für die Output-Zeilen',f.OutputLines);
+    o.chk('Benutze 64-bit PowerShell auf 64-bit Windows',f.Use64Bit);o.chk('Console anzeigen',f.ShowConsole);runAs(f,o)}],
+  TExecuteBatchCommand:['Batchdatei ausführen',(f,o)=>{o.code('Batch-Zeilen',f.Batchlines??f.BatchLines);o.var('Variable für den Exit Code',f.ExitCode);o.var('Variable für die Ausgabe',f.OutputVar);runAs(f,o)}],
+  TExecuteCommand:['Befehl ausführen',(f,o)=>{o.text('Dateiname',f.Filename??f.FileName);o.text('Parameter',f.Parameters);o.text('Arbeitsordner',f.WorkingDir);
+    o.chk('Auf Prozess warten',f.Wait_for_process);o.chk('Fehlschlagen wenn Exit Code nicht 0 ist.',f.Fail_on_exit_code);o.var('Variable für den Exit Code',f.ExitCode);
+    o.chk('Auf Windows x64 natives %WINDIR%\\System32 verwenden',f.Use_native_System32);runAs(f,o)}],
+  TActionIf:['If .. Then',(f,o)=>{o.text('Wert1',f.Value_1);o.text('Operator',f.Operator||'=');o.text('Wert2',f.Value_2);
+    o.chk('Groß-/Kleinschreibung beachten',f.CaseSensitive);o.chk('Ziffern als Zahlen behandeln',f.DigitsAsNumbers)}],
+  TActionElse:['Else',(f,o)=>o.note('Auf derselben Ebene direkt unter den If-Block davor setzen.')],
+  TActionSwitch:['Switch',(f,o)=>o.text('Variable',f._SwitchValue)],
+  TActionCase:['Case',(f,o)=>o.text('Wert',f._CaseValue)],
+  TActionGroup:['Action group',()=>{}],
+  TActionExitScript:['Skript beenden',(f,o)=>{o.text('Ergebnis',f.Result);o.text('Grund',f.Reason)}],
+  TComment:['Kommentar',(f,o)=>o.memo('Kommentar',f._CommandComment)],
+  TStoreValueOnACMPServer:['Wert auf Server speichern',(f,o)=>{o.text('Feld',`${f.TableDisplayName||'Tabelle'} → ${f.FieldDisplayName||'Feld'}`,'im Baum der individuellen Felder auswählen');o.text('Wert',f.Value);o.chk('Lösche vorherige Werte',f.ClearPreviousValues)}],
+  TShowProgressForm:['Fortschrittsfenster zeigen',()=>{}],
+  THideProgressForm:['Fortschrittsfenster verstecken',()=>{}],
+  TSetProgressFormProperties:['Fortschrittsfenster-Eigenschaften setzen',(f,o)=>{o.text('Titel',f.Form_caption);o.text('Zeile 1',f.Line1);o.text('Zeile 2',f.Line2);
+    if(f.Value_progressbar) o.text('Fortschrittsbalken',f.Value_progressbar+' %');
+    const up=[yes(f.Update_Caption)&&'Titel',yes(f.Update_line1)&&'Zeile 1',yes(f.Update_line2)&&'Zeile 2'].filter(Boolean);
+    if(up.length) o.chk('„Update“ bei '+up.join(', '),true)}],
+  TMessageDialog:['Dialoge',(f,o)=>{o.text('Titel',f.Title);o.memo('Nachricht',f.Message_text);o.text('Bild',MB_TYPE[f.MessageboxType]??f.MessageboxType);
+    const b=buttons(f); if(b) o.text('Schaltflächen',b);
+    o.var('Variable für das Ergebnis',f.Variable_name);
+    if(yes(f.Automatic_close)) o.chk(`Schließe Dialog automatisch nach ${f.Auto_close_after} Sekunden`,true)}],
+  TModifyReg:['Registrywerte bearbeiten',(f,o)=>{o.text('Hauptschlüssel',REG_ROOT[f.Rootkey]??f.Rootkey);o.text('Schlüssel',f.Key);o.text('Wertname',f.Valuename);
+    o.text('Wertetyp',REG_TYPE[f.ValueType]??`Typ-Code ${f.ValueType}, in der Console prüfen`);o.text('Wert',f.NewValue);o.chk('Benutze 64-Bit Registry auf Windows 64-Bit',f.Use64BitRegistry)}],
+  TDeleteRegistryValue:['Registryschlüssel oder Wert löschen',(f,o)=>{o.text('Hauptschlüssel',REG_ROOT[f.Rootkey]??f.Rootkey);o.text('Schlüssel',f.Registry_key);
+    if(yes(f.Delete_key)) o.text('Aktion','Schlüssel löschen'); else {o.text('Aktion','Wert löschen');o.text('Wertname',f.Registry_value)}
+    o.chk('Benutze 64-Bit Registry auf Windows 64-Bit',f.Use64BitRegistry)}],
+  TSetProjectVarFromRegistry:['Variable aus Registry setzen',(f,o)=>{o.text('Hauptschlüssel',REG_ROOT[f.Rootkey]??f.Rootkey);o.text('Schlüssel',f.Registrykey);o.text('Wertname',f.Read_value);o.var('Variable',f.Variable_name)}],
+  TSetProjectVar:['Projektvariable setzen',(f,o)=>{o.var('Variable',f.Variable_name);
+    if(f.Content_option==='MultiLine') o.code('Mehrzeiliger Text',f.Content_list); else o.text('Einzeiliger Text',f.Content)}],
+  TMakeDir:['Ordner erstellen',(f,o)=>{o.text('Pfad',f.Directory);o.chk('Ordnerstruktur anlegen',f.Force_directories)}],
+  TDeleteDir:['Ordner löschen',(f,o)=>o.text('Ordner',f.Directory)],
+  TSetNTFSFolderPermissions:['NTFS Ordnerberechtigungen setzen',(f,o)=>{o.text('Pfad',f.SelectedPath);
+    o.text('Vererbung',yes(f.ChangeInherit)?'Vererbung ändern':'Vererbung nicht ändern');
+    if(yes(f.ChangeInherit)&&!yes(f.Inherite)) o.text('Bisherige Vererbungen',yes(f.CopyPermissionsAfterDisableInherite)?'Vererbungen kopieren':'Vererbungen löschen');
+    if(yes(f.ChangeInherit)) o.chk('Berechtigungen übergeordneter Objekte vererben',f.Inherite);
+    o.text('Anwenden auf',APPLY_TO[f.ApplyTo]??f.ApplyTo);
+    o.text('Modus',yes(f.OverwritePermissions)?'Berechtigungen überschreiben':'Berechtigungen bearbeiten');
+    for(const a of lines(f.AccessList)){const m=a.match(/^([01]+)(.+)$/); if(m) o.text('Benutzer oder Gruppe',m[1].includes('0')?`${m[2]}: Rechte ${m[1]} (1 = Haken)`:`${m[2]}: Vollzugriff (alle Haken)`)}}],
+  TEnqueueClientTask:['Geplante Aufgabe ausführen',(f,o)=>o.text('Geplante Aufgabe:',f.Task)],
+  TRunClientCommand:['Client Command starten',(f,o)=>{o.text('Client Command',f.ScriptName);o.text('Parameter',f.Parameters)}],
+  TControlNTService:['NT Dienst steuern',(f,o)=>{o.text('Dienstname',f.Service_name);o.text('Aktion',f.Action);o.text('Starttyp',f.Startup_type);o.var('Variable',f.Variable_name)}],
+  TDownloadFile:['Datei herunterladen',(f,o)=>{o.text('Dateien',[].concat(f.Files_To_Download||[]).join(', '));o.text('Zielordner',f.Target_Path)}],
+  TWait:['Warte',(f,o)=>o.text('Dauer',f.Duration)],
+  TEnqueueShutDown:['Herunterfahren einreihen',null],
+  TInstallMsiPackage:['MSI Paket installieren',null], TUninstallMSIProduct:['MSI Paket deinstallieren',null],
+  TIfFileExists:['Wenn Datei (nicht) existiert',null], TIfDirectoryExists:['Wenn Ordner (nicht) existiert',null],
+  TIsSoftwareInstalledCommand:['Wenn Software (nicht) installiert ist',null], TisOPSystem:['Betriebssystem ist (nicht)',null],
+  TIsOsArchitecture:['Wenn Betriebssystem Architektur ist',null], TIfRegKeyExists:['Wenn Registryschlüssel (nicht) existiert',null],
+  TIfRegValueNameExists:['Wenn Registry Wertename (nicht) existiert',null], TWriteToLog:['Log schreiben',null], TWMIQuery:['WMI Abfrage',null],
+  TCopySingleFile:['Einzelne Datei kopieren',null], TCopyFileList:['Dateiliste kopieren',null], TDeleteFilesCommand:['Datei(en) löschen',null],
+  TRenameFile:['Datei umbenennen',null], TRenameFolder:['Ordner umbenennen',null], TCopyFolder:['Verzeichnis kopieren',null],
+  TCreateLink:['Verknüpfung erstellen',null], TModifyIni:['INI-Datei bearbeiten',null], TExtractZipArchive:['ZIP-Archiv entpacken',null],
+  TUpdateWindowsCommand:['Windows Updates installieren',null], TSetSoftwareInstalled:['Software als installiert kennzeichnen (Client)',null],
+  TGetDateTime:['Datum/Zeit ermitteln',null], TReplaceStringCommand:['Text ersetzen',null], TIncVarCommand:['Variable erhöhen',null],
+  TCustomWindowScript:['Form Editor',null], TDelphiScript:['Delphi script',null], TSetProjectVarFromEnvString:['Umgebungsvariable auslesen',null],
+};
+const STEP_ICON=c=>({TActionIf:'branch',TActionElse:'corner',TActionSwitch:'branch',TActionCase:'corner',TActionExitScript:'stop',TStoreValueOnACMPServer:'database',
+  TMessageDialog:'message',TCustomWindowScript:'message',TShowProgressForm:'progress',THideProgressForm:'progress',TSetProgressFormProperties:'progress',
+  TSetNTFSFolderPermissions:'lock',TEnqueueClientTask:'clock',TWait:'clock',TRunClientCommand:'clock',TInstallMsiPackage:'package',TUninstallMSIProduct:'package',TComment:'text'}[c]
+  ||{exec:'terminal',reg:'key',file:/Dir|Folder/.test(c)?'folder':'file',svc:'power',stop:'stop'}[fam(c)]||(/^TIf|^TIs/.test(c)?'branch':'braces'));
+const SKIP=new Set(['Description','_CommandComment','ID','_DataVersion','HasBreakpoint','Enabled','Ignore_error','isSystem','Command_relation','HighestAvailableRights',
+  'Execute_as','Content_option','Timeout_after','StoredCustomFields','StoredTables','StoredFolders','FieldID','TableID','Tablename','Fieldname']);
+let codeId=0, asciiNoted=false;
+function stepBuilder(){
+  const o={rows:[],checks:[],codes:[],notes:[]};
+  // Pfade, Variablen, Codes und einzelne Wörter in Monospace, Sätze für Benutzer in normaler Schrift
+  o.text=(l,v,hint)=>{if(v!==undefined&&v!==null&&String(v).trim()!=='') o.rows.push([l,val(v)+(hint?` <span class="hint">(${esc(hint)})</span>`:''),/[\\/%{}=<>]|^\S+$/.test(String(v).trim())?'mono':''])};
+  o.memo=(l,v)=>{if(v&&String(v).trim()) o.rows.push([l,val(v),'memo'])};
+  o.var=(l,v)=>{if(isVar(v)) o.rows.push([l,`<span class="var">${esc(v.trim())}</span>`,'mono'])};
+  o.chk=(l,v)=>{if(v===true||yes(v)) o.checks.push(l)};
+  o.code=(l,v,kind)=>{const ls=lines(v); if(ls.length) o.codes.push({l,ls,kind})};
+  o.note=t=>o.notes.push(t);
+  return o;
+}
+function stepHtml(s,no){
+  const f=s.fields||{}, def=CMD[s.class], o=stepBuilder();
+  if(def&&def[1]) def[1](f,o);
+  else for(const [k,v] of Object.entries(f)){
+    if(SKIP.has(k)) continue;
+    if(Array.isArray(v)) o.code(k.replace(/_/g,' '),v);
+    else if(/^(true|false)$/i.test(v)) o.chk(k.replace(/_/g,' '),v);
+    else o.text(k.replace(/_/g,' '),v);
+  }
+  if(!f||!Object.keys(f).length) if(s.xml) o.note('Dieser Schritt liegt nur als XML vor, die Felder im XML der Vorlage nachsehen.');
+  o.chk('Fehler ignorieren',f.Ignore_error);
+  if(f._CommandComment&&s.class!=='TComment') o.memo('Kommentar',f._CommandComment);
+  if(s.class==='TActionIf'&&s.children?.length) o.note('Die eingerückten Schritte darunter gehören in diesen Block.');
+  const codes=o.codes.map(c=>{const id='bp-c'+(++codeId);const ascii=/^[\x00-\x7F]*$/.test(c.ls.join('\n'));
+    let hint='';
+    if(c.kind==='ps'&&!ascii) hint='<p class="bs-note">Achtung: Das Skript enthält Zeichen außerhalb von ASCII. Das Skriptfeld der Console erwartet nur ASCII, nach dem Einfügen prüfen.</p>';
+    else if(c.kind==='ps'&&!asciiNoted){asciiNoted=true;hint='<p class="bs-note">Das Skriptfeld der Console erwartet nur ASCII-Zeichen. Die Skripte hier halten sich daran, Umlaute stehen als ae, oe, ue.</p>'}
+    return `<div class="bs-code"><div class="bs-codehead"><span>${esc(c.l)}, ${c.ls.length} ${c.ls.length===1?'Zeile':'Zeilen'}</span><span class="bt"><button type="button" class="btn ghost sm" data-toggle="${id}" aria-expanded="false">Anzeigen</button><button type="button" class="btn ghost sm" data-copy="${id}">${svg('copy')}Kopieren</button></span></div><pre id="${id}" hidden>${deco(esc(c.ls.join('\n')))}</pre></div>`+hint;}).join('');
+  const body=(o.rows.length?`<dl class="bs-rows">${o.rows.map(([l,v,k])=>`<dt>${esc(l)}</dt><dd class="${k}">${v}</dd>`).join('')}</dl>`:'')
+    +(o.checks.length?`<ul class="checks">${o.checks.map(c=>`<li>${svg('check')}${esc(c)}</li>`).join('')}</ul>`:'')
+    +codes+o.notes.map(n=>`<p class="bs-note">${esc(n)}</p>`).join('');
+  const name=def?def[0]:s.class;
+  return `<li class="bstep"><div class="bcard"><div class="bs-head"><span class="bs-no">${no}</span><span class="sico f-${fam(s.class)}">${svg(STEP_ICON(s.class))}</span>
+    <div class="bs-t"><b class="bs-cmd">${esc(name)}</b>${s.description&&s.description!==name?`<span class="bs-desc">Beschreibung: „${val(s.description)}“</span>`:''}</div></div>
+    ${body?`<div class="bs-body">${body}</div>`:''}</div>
+    ${s.children?.length?`<ol class="bsteps">${s.children.map((c,ix)=>stepHtml(c,no+'.'+(ix+1))).join('')}</ol>`:''}</li>`;
+}
+function projectVars(i){
+  const m=new Map((i.raw.variables||[]).map(v=>[v.name,{v:v.value??'',src:'start'}]));
+  for(const s of i.flat){const f=s.fields||{};
+    for(const k of ['ExitCode','OutputLines','OutputVar','Variable_name','Target_variable','VarName']) if(isVar(f[k])&&!m.has(f[k].trim())) m.set(f[k].trim(),{v:'',src:'step'});}
+  return m;
+}
+function bauplanHtml(i){
+  const r=i.req, files=i.files, vars=projectVars(i), kiosk=i.areas.includes('kiosk')||i.tags.includes('Kiosk');
+  codeId=0; asciiNoted=false;
+  const prep=[
+    ...(r.customFields||[]).map(c=>`Individuelles Feld <b>„${esc(c.name)}“</b> anlegen${c.type?`, Typ ${esc(c.type)}`:''}${c.maxLength?`, höchstens ${c.maxLength} Zeichen`:''}${c.table?`, Tabelle „${esc(c.table)}“`:''}${c.folder?`, Ordner „${esc(c.folder)}“`:''}. Den Namen genau so schreiben, der Schritt „Wert auf Server speichern“ wählt dieses Feld aus.`),
+    ...(r.globalAccount?[`Globalen ACMP-Account bereitstellen: ${esc(r.globalAccount)}. Ihr wählt ihn später in den Impersonierungsoptionen des Schritts.`]:[]),
+    ...files.map(f=>`Datei <code>${esc(f.name)}</code> ${f.url?`beim <a href="${esc(f.url)}" target="_blank" rel="noopener">Hersteller laden</a>`:'aus dem Repo nehmen'}${f.sha256?` und die Prüfsumme vergleichen (SHA-256 <code>${esc(f.sha256.slice(0,12))}…</code>)`:''}.`),
+    ...(r.notes||[]).map(n=>esc(n)),
+  ];
+  const phases=[];
+  if(i.params.length) phases.push(`<li class="phase"><h4>Werte festlegen</h4><p>Was ihr hier eintragt, steht unten im Bauplan überall dort, wo sonst ein Platzhalter wie <span class="ph">{{NAME}}</span> steht. Auch in den Skripten und beim Kopieren.</p>${paramFields(i,false)}</li>`);
+  if(prep.length) phases.push(`<li class="phase"><h4>Vorbereiten</h4><ul>${prep.map(p=>`<li>${p}</li>`).join('')}</ul></li>`);
+  phases.push(`<li class="phase"><h4>Client Command anlegen</h4><p>In der Console im Bereich Client Commands einen Ordner wählen und ein neues Client Command erstellen.</p>
+    <div class="copyline"><span><small>Name</small><b id="bp-name">${esc(i.name)}</b></span><button type="button" class="btn ghost sm" data-copy="bp-name">${svg('copy')}Kopieren</button></div>
+    <div class="copyline"><span><small>Beschreibung</small><span id="bp-sum">${esc(i.sum)}</span></span><button type="button" class="btn ghost sm" data-copy="bp-sum">${svg('copy')}Kopieren</button></div>
+    ${files.length?`<p style="margin-top:10px">Die vorbereiteten Dateien ins File Repository dieses Commands legen (Bereich private).</p>`:''}</li>`);
+  if(vars.size) phases.push(`<li class="phase"><h4>Projektvariablen anlegen</h4><p>Im Editor über „Projektvariablen verwalten“. Variablen, in die ein Schritt schreibt, könnt ihr auch direkt im Schritt über „Variable auswählen“ anlegen.</p>
+    <table class="vtable"><thead><tr><th>Variable</th><th>Startwert</th></tr></thead><tbody>${[...vars].map(([n,x])=>`<tr><td>${esc(n)}</td><td class="mono">${x.v!==''?val(x.v):x.src==='step'?'<span class="hint">füllt ein Schritt</span>':'<span class="hint">leer</span>'}</td></tr>`).join('')}</tbody></table></li>`);
+  phases.push(`<li class="phase"><h4>Schritte im Client Script einfügen <span class="dmeta" style="display:inline">${i.flat.length}</span></h4><p>Im Reiter „Client Script“ die Befehle aus der Liste „Befehle“ in dieser Reihenfolge einfügen und ausfüllen. Eingerückte Schritte kommen in den Block darüber.</p>
+    <ol class="bsteps">${i.steps.map((s,ix)=>stepHtml(s,String(ix+1))).join('')}</ol></li>`);
+  phases.push(`<li class="phase"><h4>Speichern, testen, freigeben</h4><ul>
+    <li>Speichern. Der Command steht dann zum Testen bereit.</li>
+    <li>Auf einem Testrechner ausführen und das Log prüfen: Exit-Codes, Ausgaben${(r.customFields||[]).length?', Wert im individuellen Feld':''}.</li>
+    <li>Erst danach freigeben.${kiosk?' Für den Kiosk anschließend einen Kiosk-Eintrag mit diesem Command anlegen.':''}</li></ul></li>`);
+  return `<div class="bp-top"><p>So baut ihr „${esc(i.name)}“ ohne MCP von Hand in der ACMP-Console nach. Befehls- und Feldnamen wie in der deutschen Console.</p>
+    <button type="button" class="btn ghost sm no-print" id="bp-print">${svg('printer')}Drucken</button></div>
+    ${i.status==='beispiel'?'<p class="notice" style="margin-top:12px">Beispielvorlage: Die Schritte haben noch keine vollständigen Felder. Der Bauplan ist deshalb lückenhaft.</p>':''}
+    <ol class="phases">${phases.join('')}</ol>`;
+}
+
+/* ---------- MCP ---------- */
 function promptText(t){
   const folder=state.folder.trim()||'<Ordner>';
   let s=`Installiere aus der ACMP CTL die Vorlage „${t.name}“ (${t.key}@${t.v}) als Entwurf in den Client-Command-Ordner „${folder}“.`;
@@ -568,66 +877,78 @@ function callText(t){
 }
 function rawJson(t){
   const strip=st=>st.map(s=>{const o={...s};if(t.status!=='beispiel'&&o.fields)delete o.summary;if(o.children)o.children=strip(o.children);return o});
-  const {stepCount,flags,...r}=t.raw;
+  const {stepCount,flags,areas,area,...r}=t.raw;
   return JSON.stringify({...r,steps:strip(r.steps)},null,2);
 }
+function kiHtml(i){
+  return `<div class="install">
+      <h3>Mit eurer KI installieren</h3>
+      ${i.status==='beispiel'?'<p class="notice">Beispielvorlage: Sie zeigt das Format, ihre Schritte haben aber noch keine vollständigen Felder. Installierbar wird sie, sobald sie durch einen echten Export ersetzt ist.</p>':''}
+      <p class="hint">Die KI legt die Vorlage über den ACMP MCP als Entwurf an, nach Zustimmung auf der Freigabe-Seite. Auf Clients läuft nichts, bis ihr den Command freigebt.</p>
+      ${paramFields(i,true)}
+      <div class="prompt"><p id="prompt-text">${esc(promptText(i))}</p><button type="button" class="btn" data-copy="prompt-text">Kopieren</button></div>
+      <p class="flow">Die KI prüft die Vorlage, setzt eure Werte ein und stellt eine Freigabe-Anfrage. Nach Zustimmung liegt der Entwurf im Ordner. Freigeben erst nach eurem Test.</p>
+      <details><summary>MCP-Aufruf anzeigen</summary><pre id="call-text">${esc(callText(i))}</pre><div class="row"><button type="button" class="btn ghost" data-copy="call-text">Kopieren</button></div></details>
+    </div>
+    <p class="flow">Noch kein ACMP MCP? <a href="#mcp">So richtet ihr ihn ein</a>. Bis dahin hilft der Bauplan.</p>`;
+}
+function beschreibungHtml(i){
+  const r=i.req, notes=[...(r.customFields||[]).map(c=>`Individuelles Feld „${c.name}“${c.type?` (${c.type})`:''}`),...(r.globalAccount?[`Globaler ACMP-Account: ${r.globalAccount}`]:[]),...(r.notes||[])];
+  return `${i.raw.description?`<div class="desc">${md(i.raw.description)}</div>`:`<p class="lead">${esc(i.sum)}</p>`}
+    <div class="sec"><h3>Voraussetzungen</h3>${notes.length?`<ul>${notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:'<p class="dmeta">Keine</p>'}</div>
+    ${i.files.length?`<div class="sec"><h3>Dateien <span class="n">${i.files.length}</span></h3><table class="ftable"><tbody>${i.files.map(f=>`<tr><td class="mono">${esc(f.name)}</td><td class="mono">${f.sha256?'sha256 '+esc(f.sha256.slice(0,8))+'…':'Hash folgt'}</td><td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">Hersteller ↗</a>`:''}</td></tr>`).join('')}</tbody></table></div>`:''}
+    <div class="sec"><h3>Bereiche und Tags</h3><div class="flags">${i.areas.map(a=>`<span class="flag info">${esc(AREA[a]?.name||a)}</span>`).join('')}${i.tags.map(t=>`<span class="flag">${esc(t)}</span>`).join('')}</div>
+      <details><summary>template.json ansehen</summary><pre>${esc(rawJson(i))}</pre></details>
+      <div class="links"><a class="btn ghost" href="${RAW}/templates/${encodeURIComponent(i.key)}/template.json" target="_blank" rel="noopener">template.json herunterladen ↗</a><a class="btn ghost" href="${REPO}/tree/main/templates/${encodeURIComponent(i.key)}" target="_blank" rel="noopener">Auf GitHub ↗</a></div></div>`;
+}
+function panelHtml(i){return state.tab==='ki'?kiHtml(i):state.tab==='beschreibung'?beschreibungHtml(i):bauplanHtml(i)}
 
 function renderDetail(){
   const i=BYKEY[state.sel]; const el=$('#detail');
+  CUR=i&&i.src==='lib'?i:null;
   if(!i){el.innerHTML=welcomeHtml();return}
   const back=`<button type="button" class="back" id="back">← Zur Liste</button>`;
+  const areaName=AREA[i.area]?`<b>${esc(AREA[i.area].name)}</b>`:'';
   if(i.src==='cf'){
     const url=String(state.entryUrl||'').replace('{id}',i.fid);
     el.innerHTML=`${back}
-      <div class="dmeta"><span>Aagon Community Filebase</span><span>${esc(i.cat)}</span></div>
+      <div class="dhead">${tile(AREA[i.area],'lg')}<div class="dmeta">${areaName}<span>Aagon Community Filebase</span>${AREA[i.area]?.name===i.cat?'':`<span>${esc(i.cat)}</span>`}</div></div>
       <h2>${esc(i.name)}</h2><p class="lead">${esc(i.sum)}</p>${appsHtml(i.apps,true)}${flagHtml(i.flags)}
       <div class="stats"><span>Autor <b>${esc(i.author)}</b></span><span>Stand <b>${fmtDate(i.date)}</b></span><span><b>${nf.format(i.dl)}</b> Downloads</span><span><b>${i.cm}</b> Kommentare</span></div>
       <div class="cfbox"><h3>Nur als Link verfügbar</h3>
-        <p>Der Export liegt als .sim vor. Die Datei ist verschlüsselt, deshalb sieht man die Schritte erst nach dem Import in die ACMP-Console. Reicht der Autor den Command als Vorlage ein, wird er hier prüf- und installierbar.</p>
+        <p>Der Export liegt als .sim vor. Die Datei ist verschlüsselt, deshalb sieht man die Schritte erst nach dem Import in die ACMP-Console, und einen Bauplan gibt es dafür nicht. Reicht der Autor den Command als Vorlage ein, wird er hier prüf- und nachbaubar.</p>
         <a class="btn" href="${esc(url)}" target="_blank" rel="noopener">In der Filebase öffnen ↗</a></div>
       <div class="sec"><h3>Voraussetzungen</h3>${i.dep.length?`<ul>${i.dep.map(d=>`<li>${esc(d)}</li>`).join('')}</ul>`:'<p class="dmeta">Keine angegeben</p>'}</div>
       <div class="sec"><h3>Dateien <span class="n">${i.sims.length}</span></h3><table class="ftable"><tbody>${i.sims.map(s=>`<tr><td class="mono">${esc(s)}</td></tr>`).join('')}</tbody></table></div>
       <div class="sec"><h3>Tags</h3><div class="flags">${i.tags.map(t=>`<span class="flag">${esc(t)}</span>`).join('')}</div></div>`;
     return;
   }
-  const r=i.req, notes=[...(r.customFields||[]).map(c=>`Individuelles Feld „${c.name}“${c.type?` (${c.type})`:''}`),...(r.globalAccount?[`Globaler ACMP-Account: ${r.globalAccount}`]:[]),...(r.notes||[])];
   el.innerHTML=`${back}
-    <div class="dmeta"><span>${esc(i.cat)}</span><span class="v">v${esc(i.v)}</span><span>Stand ${fmtDate(i.date)}</span><span>${esc(i.author)}</span></div>
+    <div class="dhead">${tile(AREA[i.area],'lg')}<div class="dmeta">${areaName}${AREA[i.area]?.name===i.cat?'':`<span>${esc(i.cat)}</span>`}<span class="v">v${esc(i.v)}</span><span>Stand ${fmtDate(i.date)}</span><span>${esc(i.author)}</span></div></div>
     <h2>${esc(i.name)}</h2><p class="lead">${esc(i.sum)}</p>${appsHtml(i.apps,true)}${flagHtml(i.flags)}
     <p class="status">${srcBadge(i)} ${esc(STATUS_TEXT[i.status]||'')}</p>
-    ${i.raw.description?`<div class="sec"><h3>Beschreibung</h3><div class="desc">${md(i.raw.description)}</div></div>`:''}
-    <div class="install">
-      <h3>Mit eurer KI installieren</h3>
-      ${i.status==='beispiel'?'<p class="notice">Beispielvorlage: Sie zeigt das Format, ihre Schritte haben aber noch keine vollständigen Felder. Installierbar wird sie, sobald sie durch einen echten Export ersetzt ist.</p>':''}
-      <p class="hint">Die KI legt die Vorlage über den ACMP MCP als Entwurf an, nach Zustimmung auf der Freigabe-Seite. Auf Clients läuft nichts, bis ihr den Command freigebt.</p>
-      <div class="fields">
-        <div><label for="inp-folder">Client-Command-Ordner</label><input id="inp-folder" value="${esc(state.folder)}" placeholder="z. B. Wartung"></div>
-        ${i.params.map(p=>`<div><label for="inp-p-${esc(p.name)}"><code>${esc(p.name)}</code></label><input id="inp-p-${esc(p.name)}" data-param="${esc(p.name)}" value="${esc(pval(i,p.name,p.default))}"><div class="pd">${esc(p.description)}</div></div>`).join('')}
-        ${r.globalAccount?`<div><label for="inp-ga">Globaler Account</label><input id="inp-ga" data-param="${GA}" value="${esc(pval(i,GA,''))}" placeholder="Name in ACMP"><div class="pd">${esc(r.globalAccount)}</div></div>`:''}
-      </div>
-      <div class="prompt"><p id="prompt-text">${esc(promptText(i))}</p><button type="button" class="btn" data-copy="prompt-text">Kopieren</button></div>
-      <p class="flow">Die KI prüft die Vorlage, setzt eure Werte ein und stellt eine Freigabe-Anfrage. Nach Zustimmung liegt der Entwurf im Ordner. Freigeben erst nach eurem Test.</p>
-      <details><summary>MCP-Aufruf anzeigen</summary><pre id="call-text">${esc(callText(i))}</pre><div class="row"><button type="button" class="btn ghost" data-copy="call-text">Kopieren</button></div></details>
-    </div>
-    <div class="sec"><h3>Schritte <span class="n">${i.flat.length}</span></h3>${tree(i.steps)}${legend}</div>
-    <div class="sec"><h3>Voraussetzungen</h3>${notes.length?`<ul>${notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>`:'<p class="dmeta">Keine</p>'}</div>
-    ${i.files.length?`<div class="sec"><h3>Dateien <span class="n">${i.files.length}</span></h3><table class="ftable"><tbody>${i.files.map(f=>`<tr><td class="mono">${esc(f.name)}</td><td class="mono">${f.sha256?'sha256 '+esc(f.sha256.slice(0,8))+'…':'Hash folgt'}</td><td>${f.url?`<a href="${esc(f.url)}" target="_blank" rel="noopener">Hersteller ↗</a>`:''}</td></tr>`).join('')}</tbody></table></div>`:''}
-    <div class="sec"><h3>Tags</h3><div class="flags">${i.tags.map(t=>`<span class="flag">${esc(t)}</span>`).join('')}</div>
-      <details><summary>template.json ansehen</summary><pre>${esc(rawJson(i))}</pre></details>
-      <div class="links"><a class="btn ghost" href="${RAW}/templates/${encodeURIComponent(i.key)}/template.json" target="_blank" rel="noopener">template.json herunterladen ↗</a><a class="btn ghost" href="${REPO}/tree/main/templates/${encodeURIComponent(i.key)}" target="_blank" rel="noopener">Auf GitHub ↗</a></div></div>`;
+    <div class="tabs" role="tablist" aria-label="Ansicht">${TABS.map(([k,l,ic])=>`<button type="button" class="tab" role="tab" id="tab-${k}" data-tab="${k}" aria-selected="${state.tab===k}" aria-controls="panel" tabindex="${state.tab===k?0:-1}">${svg(ic)}${l}</button>`).join('')}</div>
+    <div class="panel" id="panel" role="tabpanel" aria-labelledby="tab-${state.tab}">${panelHtml(i)}</div>`;
+}
+function setTab(k,focus){
+  const i=BYKEY[state.sel]; if(!i||i.src!=='lib'||state.tab===k&&!focus) return;
+  state.tab=k; store.set('ctl-tab',k);
+  document.querySelectorAll('.tab').forEach(b=>{const on=b.dataset.tab===k;b.setAttribute('aria-selected',on);b.tabIndex=on?0:-1;if(on&&focus)b.focus()});
+  const p=$('#panel'); p.setAttribute('aria-labelledby','tab-'+k); p.innerHTML=panelHtml(i);
+  try{history.replaceState(null,'','#'+encodeURIComponent(i.key)+'/'+k)}catch(e){}
 }
 function welcomeHtml(){
   const lib=ALL.filter(x=>x.src==='lib'&&x.status!=='beispiel');
   const newest=[...lib].sort((a,b)=>b.date.localeCompare(a.date)||a.name.localeCompare(b.name,'de')).slice(0,6);
   return `<div class="welcome">
     <h2>Vorlage wählen</h2>
-    <p class="lead">Links eine Vorlage anklicken. Hier stehen dann alle Schritte, Skripte und Voraussetzungen.</p>
+    <p class="lead">Links eine Vorlage anklicken. Hier steht dann der Bauplan, die Beschreibung und der Text für eure KI.</p>
     <dl>
-      <div><dt>Finden</dt><dd>Sucht nach Anwendung, Aufgabe, Dienst oder Registry-Pfad. Gesucht wird auch in jedem Schritt.</dd></div>
-      <div><dt>Prüfen</dt><dd>Jeder Schritt steht samt Skript im Klartext. Keine verschlüsselte .sim-Datei, keine Kennwörter, keine internen Namen.</dd></div>
-      <div><dt>Installieren lassen</dt><dd>Eure KI legt den Command über den ACMP MCP als Entwurf an. Freigegeben wird erst nach eurem Test.</dd></div>
+      <div><span class="ico" style="--h:200">${svg('search')}</span><div><dt>Finden</dt><dd>Über die Bereiche oben oder die Suche nach Anwendung, Aufgabe, Dienst oder Registry-Pfad. Gesucht wird auch in jedem Schritt.</dd></div></div>
+      <div><span class="ico" style="--h:55">${svg('wrench')}</span><div><dt>Von Hand nachbauen</dt><dd>Der Bauplan zeigt jeden Befehl so, wie er in der deutschen ACMP-Console heißt, mit allen Feldern und Skripten zum Kopieren.</dd></div></div>
+      <div><span class="ico" style="--h:290">${svg('sparkle')}</span><div><dt>Mit KI installieren</dt><dd>Mit dem ACMP MCP legt eure KI den Command als Entwurf an. Freigegeben wird erst nach eurem Test.</dd></div></div>
     </dl>
-    ${newest.length?`<div class="sec newest"><h3>Zuletzt aktualisiert</h3>${newest.map(t=>`<a href="#${esc(t.key)}">${esc(t.name)}<span>${esc(t.cat)}, ${fmtDate(t.date)}</span></a>`).join('')}</div>`:''}
+    ${newest.length?`<div class="sec newest"><h3>Zuletzt aktualisiert</h3>${newest.map(t=>`<a href="#${esc(t.key)}">${tile(AREA[t.area])}<span class="t">${esc(t.name)}</span><span class="d">${fmtDate(t.date)}</span></a>`).join('')}</div>`:''}
   </div>`;
 }
 function refreshInstall(){
@@ -637,45 +958,56 @@ function refreshInstall(){
   if(c) c.textContent=callText(i);
 }
 
-function openDetail(key){
-  state.sel=key; renderDetail(); markCurrent();
+function openDetail(key,tab){
+  state.sel=key; if(tab) state.tab=tab;
+  renderDetail(); markCurrent();
   $('#detail').scrollTop=0;
   if(!mqWide.matches) document.body.classList.add('show-detail');
 }
 function closeDetail(){document.body.classList.remove('show-detail')}
 function leaveDetail(){try{if(location.hash) history.replaceState(null,'',location.pathname+location.search)}catch(e){}closeDetail()}
 function fromHash(){
-  let k=''; try{k=decodeURIComponent(location.hash.slice(1))}catch(e){}
-  if(BYKEY[k]) openDetail(k); else closeDetail();
+  let k='',t=''; try{[k,t]=decodeURIComponent(location.hash.slice(1)).split('/')}catch(e){}
+  if(BYKEY[k]) openDetail(k,TABS.some(x=>x[0]===t)?t:null); else closeDetail();
 }
-function setApp(name){state.app=state.app===name?'':name;state.cat='Alle';leaveDetail();run();$('#cards').scrollIntoView({block:'start',behavior:'smooth'})}
+function setApp(name){state.app=state.app===name?'':name;leaveDetail();run();$('#vorlagen').scrollIntoView({block:'start',behavior:'smooth'})}
 
 $('#q').addEventListener('input',e=>{state.q=e.target.value;run()});
 $('#sort').addEventListener('change',e=>{state.sort=e.target.value;run()});
 $('#app').addEventListener('change',e=>{state.app=e.target.value;run()});
 document.addEventListener('click',e=>{
   const t=e.target.closest('button,a'); if(!t) return;
-  if(t.dataset.cat){state.cat=state.cat===t.dataset.cat&&t.dataset.cat!=='Alle'?'Alle':t.dataset.cat;run()}
+  if(t.dataset.area){state.area=state.area===t.dataset.area?'':t.dataset.area;run();if(state.area)$('#vorlagen').scrollIntoView({block:'start',behavior:'smooth'})}
+  else if(t.dataset.tab){setTab(t.dataset.tab)}
   else if(t.dataset.src){state.src=t.dataset.src;run()}
   else if(t.dataset.app){setApp(t.dataset.app)}
   else if('clearApp' in t.dataset){state.app='';run()}
-  else if(t.dataset.q){$('#q').value=t.dataset.q;state.q=t.dataset.q;state.cat='Alle';run();$('#q').focus()}
-  else if(t.id==='reset'){state.q='';state.cat='Alle';state.src='all';state.app='';$('#q').value='';run()}
+  else if('clearArea' in t.dataset){state.area='';run()}
+  else if(t.dataset.q){$('#q').value=t.dataset.q;state.q=t.dataset.q;state.area='';run();$('#q').focus()}
+  else if(t.id==='reset'){state.q='';state.area='';state.src='all';state.app='';$('#q').value='';run()}
   else if(t.id==='back'){leaveDetail()}
+  else if(t.id==='bp-print'){window.print()}
+  else if(t.dataset.toggle){const p=document.getElementById(t.dataset.toggle);if(p){p.hidden=!p.hidden;t.textContent=p.hidden?'Anzeigen':'Ausblenden';t.setAttribute('aria-expanded',String(!p.hidden))}}
   else if(t.dataset.copy){
     const src=document.getElementById(t.dataset.copy); const txt=src?src.textContent:'';
-    const done=m=>{const o=t.textContent;t.textContent=m;setTimeout(()=>t.textContent=o,1600)};
+    const label=t.innerHTML;
+    const done=m=>{t.textContent=m;setTimeout(()=>t.innerHTML=label,1600)};
     try{navigator.clipboard.writeText(txt).then(()=>done('Kopiert'),()=>{selectText(src);done('Markiert')})}
     catch(err){selectText(src);done('Markiert')}
   }
 });
-function selectText(node){if(!node)return;const r=document.createRange();r.selectNodeContents(node);const s=window.getSelection();s.removeAllRanges();s.addRange(r)}
+function selectText(node){if(!node)return;if(node.hidden)node.hidden=false;const r=document.createRange();r.selectNodeContents(node);const s=window.getSelection();s.removeAllRanges();s.addRange(r)}
 document.addEventListener('input',e=>{
   const t=e.target;
-  if(t.id==='inp-folder'){state.folder=t.value;try{localStorage.setItem('ctl-folder',t.value)}catch(err){}refreshInstall()}
-  else if(t.dataset.param){const i=BYKEY[state.sel];(state.params[i.key]=state.params[i.key]||{})[t.dataset.param]=t.value;refreshInstall()}
+  if(t.id==='inp-folder'){state.folder=t.value;store.set('ctl-folder',t.value);refreshInstall()}
+  else if(t.dataset.param){const i=BYKEY[state.sel];(state.params[i.key]=state.params[i.key]||{})[t.dataset.param]=t.value;updatePlaceholders(t.dataset.param,t.value);refreshInstall()}
 });
 document.addEventListener('keydown',e=>{
+  if(e.target.classList?.contains('tab')&&/^(ArrowLeft|ArrowRight|Home|End)$/.test(e.key)){
+    const ks=TABS.map(x=>x[0]),ix=ks.indexOf(state.tab);
+    const n=e.key==='Home'?0:e.key==='End'?ks.length-1:(ix+(e.key==='ArrowRight'?1:-1)+ks.length)%ks.length;
+    e.preventDefault();setTab(ks[n],true);return;
+  }
   if(e.key==='/'&&!/input|textarea|select/i.test(document.activeElement?.tagName||'')){e.preventDefault();$('#q').focus()}
   else if(e.key==='Escape'){
     if(document.body.classList.contains('show-detail')) leaveDetail();
@@ -683,6 +1015,8 @@ document.addEventListener('keydown',e=>{
   }
 });
 window.addEventListener('hashchange',fromHash);
+window.addEventListener('beforeprint',()=>document.querySelectorAll('#detail pre[hidden]').forEach(p=>{p.hidden=false;p.dataset.wasHidden='1'}));
+window.addEventListener('afterprint',()=>document.querySelectorAll('#detail pre[data-was-hidden]').forEach(p=>{p.hidden=true;delete p.dataset.wasHidden}));
 mqWide.addEventListener?.('change',()=>{if(mqWide.matches) closeDetail()});
 
 fetch('index.json',{cache:'no-cache'}).then(r=>{if(!r.ok) throw new Error(r.status);return r.json()}).then(load).catch(err=>{
